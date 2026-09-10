@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="surface" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#353943"/><stop offset="1" stop-color="#17191f"/>
+    </linearGradient>
+    <linearGradient id="spectrum" x1="0" y1="0" x2="1" y2="0">
+      <stop stop-color="#ff5268"/><stop offset=".48" stop-color="#b37cff"/><stop offset="1" stop-color="#64dfd1"/>
+    </linearGradient>
+    <linearGradient id="key" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#565c69"/><stop offset="1" stop-color="#353a46"/>
+    </linearGradient>
+  </defs>
+  <rect x="12" y="18" width="232" height="230" rx="52" fill="#101216"/>
+  <rect x="12" y="8" width="232" height="232" rx="52" fill="url(#surface)"/>
+  <rect x="13" y="9" width="230" height="230" rx="51" fill="none" stroke="#ffffff" stroke-opacity=".09" stroke-width="2"/>
+  <rect x="34" y="86" width="132" height="101" rx="19" fill="#111318"/>
+  <rect x="34" y="76" width="132" height="103" rx="19" fill="#454b57"/>
+  <rect x="42" y="84" width="116" height="85" rx="12" fill="#242832"/>
+  <g fill="url(#key)">
+    <rect x="49" y="92" width="27" height="27" rx="6"/>
+    <rect x="86" y="92" width="27" height="27" rx="6"/>
+    <rect x="123" y="92" width="27" height="27" rx="6"/>
+    <rect x="49" y="129" width="27" height="27" rx="6"/>
+    <rect x="86" y="129" width="64" height="27" rx="6"/>
+  </g>
+  <rect x="53" y="112" width="19" height="4" rx="2" fill="#ff627a"/>
+  <rect x="90" y="112" width="19" height="4" rx="2" fill="#b98dff"/>
+  <rect x="127" y="112" width="19" height="4" rx="2" fill="#68dfd0"/>
+  <rect x="53" y="149" width="19" height="4" rx="2" fill="#ff627a"/>
+  <rect x="90" y="149" width="56" height="4" rx="2" fill="url(#spectrum)"/>
+  <rect x="175" y="78" width="47" height="108" rx="23.5" fill="#111318"/>
+  <rect x="175" y="70" width="47" height="108" rx="23.5" fill="#454b57"/>
+  <path d="M198.5 72v40m-22 0h44" fill="none" stroke="#292d36" stroke-width="3"/>
+  <rect x="194" y="85" width="9" height="22" rx="4.5" fill="#70e4d4"/>
+  <path d="M185 158q13.5 14 27 0" fill="none" stroke="#70e4d4" stroke-width="4" stroke-linecap="round"/>
+  <rect x="53" y="198" width="150" height="7" rx="3.5" fill="url(#spectrum)"/>
+</svg>

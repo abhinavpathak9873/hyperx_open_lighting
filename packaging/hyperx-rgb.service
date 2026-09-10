@@ -1,0 +1,15 @@
+[Unit]
+Description=HyperX Open Lighting background controller
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /usr/share/hyperx-open-lighting/app.py --daemon
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=yes
+UMask=0077
+
+[Install]
+WantedBy=graphical-session.target

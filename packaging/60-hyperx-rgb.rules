@@ -1,0 +1,4 @@
+# RGB control interfaces only: HyperX Alloy Rise 75 and Haste 2 Core Wireless.
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="03f0", ATTRS{idProduct}=="02a1", ENV{HYPERX_RGB_DEVICE}="1"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="03f0", ATTRS{idProduct}=="0ab5", ENV{HYPERX_RGB_DEVICE}="1"
+SUBSYSTEM=="hidraw", ENV{HYPERX_RGB_DEVICE}=="1", ATTRS{bInterfaceNumber}=="02", TAG+="uaccess"

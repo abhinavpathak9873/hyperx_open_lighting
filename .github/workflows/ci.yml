@@ -1,0 +1,50 @@
+name: Test and package
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tests
+        run: PYTHONPATH=src python3 -m unittest discover -s tests -v
+      - name: Build release files
+        run: python3 scripts/build_release.py
+      - name: Install Debian package
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ./dist/*.deb
+          /usr/bin/python3 -c "import gi; gi.require_version('Gtk', '4.0'); gi.require_version('Adw', '1'); from gi.repository import Gtk; assert Gtk.get_minor_version() >= 10"
+          /usr/bin/hyperx-open-lighting --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-packages
+          path: |
+            dist/*.tar.gz
+            dist/*.deb
+            dist/SHA256SUMS
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: test
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-packages
+          path: dist
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          extra=()
+          if [[ "$TAG" == *alpha* || "$TAG" == *beta* || "$TAG" == *rc* ]]; then extra+=(--prerelease); fi
+          gh release create "$TAG" dist/*.tar.gz dist/*.deb dist/SHA256SUMS --verify-tag --title "HyperX Open Lighting $TAG" --notes 'Native Linux lighting control for Alloy Rise 75 and Pulsefire Haste 2 Core Wireless. Includes a user installer, Debian package, custom icon and background startup. See the README for installation and troubleshooting.' "${extra[@]}"
