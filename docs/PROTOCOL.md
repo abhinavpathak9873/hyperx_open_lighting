@@ -72,4 +72,6 @@ and readback mismatch handling are covered by automated tests. The mouse slept
 during the separate polling-rate hardware test, so that change was not verified
 on awake hardware during this release check. Hardware queries/writes run on the existing mouse worker, never a second
 HID reader. Mouse sleep/timeouts do not block the keyboard worker. Physical DPI
-button changes appear on the next query and are not immediately overwritten.
+button changes are tracked from `fb 08 SS` stage notifications in v0.2.1; other
+input notifications are discarded. Routine background DPI queries are avoided
+to keep RGB frames uninterrupted.

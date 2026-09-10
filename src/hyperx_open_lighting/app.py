@@ -124,6 +124,7 @@ class Device:
         self.key, self.path = key, path
         self.fd = os.open(path, os.O_RDWR | os.O_NONBLOCK)
         self.acks = 0
+        self.dpi_stage = None
         try:
             response = self.exchange(packet([0x10, 1]), response=(0x11, 1))
             info = next(b for b in response if b[:2] == b'\x11\x01')
@@ -142,14 +143,20 @@ class Device:
             os.close(self.fd)
             self.fd = None
 
+    def observe_stage(self, data):
+        if self.key == 'mouse' and len(data) >= 3 and data[:2] == b'\xfb\x08' and data[2] < 4:
+            self.dpi_stage = data[2]
+
     def exchange(self, data, response=None):
         # Drop stale notifications/acks before each transaction.
         while select.select([self.fd], [], [], 0)[0]:
-            if not os.read(self.fd, 64):
+            stale = os.read(self.fd, 64)
+            if not stale:
                 raise OSError('Device disconnected')
+            self.observe_stage(stale)
         if os.write(self.fd, data) != 64:
             raise OSError('Incomplete HID write')
-        deadline = time.monotonic() + 0.6
+        deadline = time.monotonic() + (.25 if self.key == 'mouse' else .6)
         received = []
         while time.monotonic() < deadline:
             if not select.select([self.fd], [], [], max(0, deadline - time.monotonic()))[0]:
@@ -159,6 +166,8 @@ class Device:
                 raise OSError('Incomplete HID response')
             # Keyboard notifications can contain key events. Never retain them.
             if item[0] == 0xFB:
+                # Only retain the mouse DPI-stage notification, never key events.
+                self.observe_stage(item)
                 continue
             received.append(item)
             if item[:2] == b'\xff\x01' and item[14] in (data[0], data[0] + 1) and item[15] == data[1]:
@@ -229,6 +238,21 @@ def device_worker(key, shared, guard, stopping):
     dpi_actual = None
     dpi_checked = 0
     dpi_error = None
+    dpi_next = 0
+    dpi_failures = 0
+    reconnects = 0
+    frame_failures = 0
+
+    def mouse_heartbeat():
+        nonlocal frames, previous_frame, max_gap
+        if not settings['enabled']:
+            return
+        device.frame(render('mouse', settings, time.monotonic()))
+        completed = time.monotonic()
+        frames += 1
+        if previous_frame is not None:
+            max_gap = max(max_gap, completed - previous_frame)
+        previous_frame = completed
     try:
         while not stopping.is_set():
             started = time.monotonic()
@@ -250,25 +274,48 @@ def device_worker(key, shared, guard, stopping):
                     if path is None:
                         with guard:
                             shared['devices'][key] = {'state': 'Waiting for device'}
-                        stopping.wait(2)
+                        stopping.wait(.5 if key == 'mouse' else 2)
                         continue
                     device = Device(key, path)
+                    reconnects += 1
                     applied = None
-                    previous_frame = None
-                    dpi_applied, dpi_actual, dpi_checked = None, None, 0
-                if key == 'mouse' and (dpi_request != dpi_applied or started - dpi_checked >= 2):
+                    if key != 'mouse':
+                        previous_frame = None
+                    # Keep the last observed stage through transient RF failures.
+                    # A reconnect must not jump back to an older saved stage.
+                    dpi_checked, dpi_next = 0, 0
+                dpi_due = key == 'mouse' and started >= dpi_next and (dpi_request != dpi_applied or dpi_checked == 0 or dpi_error is not None)
+                if dpi_due:
+                    # Restore RGB first; optional sensor queries cannot hold up
+                    # the first frame after wake or reconnect.
+                    mouse_heartbeat()
+                if dpi_due:
                     try:
                         if dpi_desired is not None and dpi_request != dpi_applied:
-                            dpi_actual = mouse.apply(device, dpi_desired)
+                            dpi_actual = mouse.apply(device, dpi_desired, heartbeat=mouse_heartbeat)
                             dpi_applied = dpi_request
                         else:
-                            _, dpi_actual = mouse.read(device)
+                            _, current_dpi = mouse.read(device)
+                            if dpi_desired is not None and (current_dpi['stages'] != dpi_desired['stages'] or
+                                                           current_dpi['polling_hz'] != dpi_desired['polling_hz']):
+                                restore = {**dpi_desired, 'active': (dpi_actual or dpi_desired)['active']}
+                                mouse_heartbeat()
+                                dpi_actual = mouse.apply(device, restore, heartbeat=mouse_heartbeat)
+                            else:
+                                dpi_actual = current_dpi
                             dpi_applied = dpi_request
                         dpi_error = None
+                        dpi_next = started
+                    except TimeoutError:
+                        # A lost optional query is not a lost lighting session.
+                        dpi_error = 'DPI query timed out; lighting continues, retrying shortly'
+                        dpi_failures += 1
+                        dpi_next = time.monotonic() + 5
                     except (ValueError, RuntimeError) as exc:
                         dpi_error = str(exc)
                         # Retry rejected settings only after a new request or reconnect.
                         dpi_applied = dpi_request
+                        dpi_next = time.monotonic() + 30
                     dpi_checked = started
                 if not settings['enabled']:
                     with guard:
@@ -281,6 +328,9 @@ def device_worker(key, shared, guard, stopping):
                 # Even identical static/off frames must be streamed: otherwise
                 # firmware resumes its onboard lighting after host activity stops.
                 device.frame(render(key, settings, started))
+                frame_failures = 0
+                if key == 'mouse' and dpi_actual and type(getattr(device, 'dpi_stage', None)) is int:
+                    dpi_actual = {**dpi_actual, 'active': device.dpi_stage}
                 completed = time.monotonic()
                 frames += 1
                 if previous_frame is not None:
@@ -295,10 +345,13 @@ def device_worker(key, shared, guard, stopping):
                         'acknowledged_commands': device.acks, 'frames_sent': frames,
                         'max_frame_gap_ms': round(max_gap * 1000, 1),
                         'target_fps': 20, **device.info,
-                        **({'dpi': dpi_actual, 'dpi_error': dpi_error} if key == 'mouse' else {}),
+                        **({'dpi': dpi_actual, 'dpi_error': dpi_error,
+                            'dpi_query_failures': dpi_failures, 'connections': reconnects} if key == 'mouse' else {}),
                     }
             except (OSError, RuntimeError, TimeoutError, StopIteration) as exc:
-                if device is not None:
+                frame_failures += 1
+                keep_mouse_session = key == 'mouse' and isinstance(exc, TimeoutError) and frame_failures < 3
+                if device is not None and not keep_mouse_session:
                     device.close()
                     device = None
                 message = str(exc)
@@ -306,7 +359,7 @@ def device_worker(key, shared, guard, stopping):
                     message = 'Waiting for mouse to wake or reconnect'
                 with guard:
                     shared['devices'][key] = {'state': message, 'frames_sent': frames}
-                stopping.wait(3)
+                stopping.wait((.05 if device is not None else .25) if key == 'mouse' else 3)
                 continue
             stopping.wait(max(0, .05 - (time.monotonic() - started)))
     finally:
@@ -410,7 +463,7 @@ def gui(default_page='lighting'):
                                     application_name='HyperX Open Lighting',
                                     application_icon='local.hyperx.RGB',
                                     developer_name='HyperX Open Lighting contributors',
-                                    version='0.2.0',
+                                    version='0.2.1',
                                     website='https://github.com/abhinavpathak9873/hyperx_open_lighting',
                                     issue_url='https://github.com/abhinavpathak9873/hyperx_open_lighting/issues',
                                     license_type=Gtk.License.MIT_X11)
@@ -577,7 +630,7 @@ def gui(default_page='lighting'):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--version', action='version', version='HyperX Open Lighting 0.2.0')
+    parser.add_argument('--version', action='version', version='HyperX Open Lighting 0.2.1')
     parser.add_argument('--doctor', action='store_true', help='Show dependency and device access checks')
     switch = parser.add_mutually_exclusive_group()
     switch.add_argument('--enable', action='store_true', help='Enable selected devices')

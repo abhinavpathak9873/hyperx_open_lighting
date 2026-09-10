@@ -42,6 +42,67 @@ class MouseTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'readback'):
             mouse.apply(device, desired)
 
+    def test_matching_hardware_settings_are_not_rewritten(self):
+        device = Mock()
+        device.exchange.return_value = [REPORT]
+        self.assertEqual(mouse.apply(device, mouse.decode(REPORT)), mouse.decode(REPORT))
+        device.exchange.assert_called_once()
+
+    def test_dpi_query_timeout_does_not_interrupt_lighting(self):
+        shared = {'settings': {k: dict(v) for k, v in app.DEFAULT.items()}, 'devices': {}}
+        stop, guard = threading.Event(), threading.Lock()
+        device = Mock(acks=0, info={}, path='mouse')
+        with patch.object(app, 'Device', return_value=device) as connect, \
+                patch.object(app, 'find_device', return_value='mouse'), \
+                patch.object(mouse, 'read', side_effect=TimeoutError('Lost DPI query')) as read:
+            worker = threading.Thread(target=app.device_worker, args=('mouse', shared, guard, stop))
+            worker.start()
+            try:
+                time.sleep(.35)
+                self.assertEqual(shared['devices']['mouse']['state'], 'Connected')
+                self.assertGreaterEqual(device.frame.call_count, 6)
+                self.assertEqual(connect.call_count, 1)
+                self.assertEqual(read.call_count, 1)  # failed optional query backs off
+                self.assertEqual(shared['devices']['mouse']['dpi_query_failures'], 1)
+            finally:
+                stop.set()
+                worker.join()
+
+    def test_rf_retry_does_not_restore_old_saved_stage(self):
+        desired = mouse.decode(REPORT)
+        current = {**desired, 'active': 2}
+        shared = {'settings': {k: dict(v) for k, v in app.DEFAULT.items()}, 'devices': {},
+                  'mouse_settings': {'dpi': desired}, 'mouse_revision': 1}
+        stop, guard = threading.Event(), threading.Lock()
+        first, second = [Mock(acks=0, info={}, path='mouse') for _ in range(2)]
+        first.frame.side_effect = [None, None] + [TimeoutError('Lost lighting ACK') for _ in range(3)]
+        with patch.object(app, 'Device', side_effect=[first, second]), \
+                patch.object(app, 'find_device', return_value='mouse'), \
+                patch.object(mouse, 'read', return_value=(REPORT, current)), \
+                patch.object(mouse, 'apply', return_value=desired) as apply:
+            worker = threading.Thread(target=app.device_worker, args=('mouse', shared, guard, stop))
+            worker.start()
+            try:
+                time.sleep(.75)
+                self.assertEqual(apply.call_count, 1)
+                self.assertEqual(shared['devices']['mouse']['dpi']['active'], 2)
+                self.assertGreater(second.frame.call_count, 3)
+            finally:
+                stop.set()
+                worker.join()
+
+    def test_only_mouse_stage_notifications_are_retained(self):
+        d = app.Device.__new__(app.Device)
+        d.key, d.dpi_stage = 'mouse', None
+        d.observe_stage(b'\xfb\x08\x02')
+        self.assertEqual(d.dpi_stage, 2)
+        for packet in (b'\xfb\x01\x03', b'\xfb\x08\x04', b'\xfb'):
+            d.observe_stage(packet)
+            self.assertEqual(d.dpi_stage, 2)
+        d.key = 'keyboard'
+        d.observe_stage(b'\xfb\x08\x01')
+        self.assertEqual(d.dpi_stage, 2)
+
     def test_pointer_is_per_device_and_validated(self):
         pointer = {'sensitivity': -.25, 'acceleration': 'flat', 'scroll_factor': 1.5, 'natural_scroll': True}
         text = mouse.pointer_text(pointer)

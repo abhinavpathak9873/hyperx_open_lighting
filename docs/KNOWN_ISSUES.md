@@ -25,3 +25,18 @@ worker, so wireless timeout/retry does not stall keyboard frames.
 USB receiver mode only. Sleeping devices may not acknowledge commands; retries
 are automatic. Continuous effects can shorten battery life. One mouse RGB zone
 means rainbow wave is equivalent to color cycling on that device.
+
+
+## Mouse RGB gaps and speed changes in 0.2.0
+
+A timed-out DPI query took the mouse into the same three-second retry path as
+a disconnected lighting interface. Reopening the interface also reapplied the
+saved DPI stage, potentially undoing a stage selected with the mouse's button.
+Version 0.2.1 isolates optional query timeouts, avoids routine background DPI polling, sends RGB
+between sensor commands, uses shorter mouse-specific timeouts and wake retries,
+and retains the observed stage through transient RF recovery. Matching settings
+are read but not rewritten. Keyboard timing is unchanged.
+
+For a fixed sensitivity, use one DPI across all stages and flat desktop
+acceleration. A physically sleeping/disconnected mouse cannot accept live RGB;
+its onboard effect may appear until it responds again.

@@ -42,7 +42,7 @@ also run in Ubuntu 24.04. Other distributions are best effort.
 Download the `.deb` from [Releases](https://github.com/abhinavpathak9873/hyperx_open_lighting/releases), then:
 
 ```sh
-sudo apt install ./hyperx-open-lighting_0.2.0_all.deb
+sudo apt install ./hyperx-open-lighting_0.2.1_all.deb
 ```
 
 Open **HyperX Open Lighting** from your application launcher. Opening it enables
@@ -109,13 +109,16 @@ The user installer also provides the `hyperx-rgb` command for compatibility.
 ### Mouse controls
 
 Open the **Mouse** tab. It displays the mouse's current hardware DPI and polling
-rate, refreshed every two seconds. Enable **Customize hardware DPI**, edit the
+rate after connecting; DPI-stage changes are tracked from mouse notifications. Enable **Customize hardware DPI**, edit the
 four stages, choose the selected stage and click **Apply mouse settings**.
 Changing a hardware control enables customization automatically. Supported DPI
 is **50–12,000 in steps of 50**; polling rates are **125, 250, 500 and 1,000 Hz**.
 The app preserves stage colors and unrelated table bytes, then verifies readback.
-The physical DPI button still cycles stages. Apply restores your saved selection;
-login and reconnect also restore it. Disabling customization stops restoring
+The physical DPI button still cycles stages. **Use one DPI for all stages** copies
+the selected DPI across all four stages so the button cannot change sensitivity.
+Apply and login restore your saved selection. Transient wireless retries preserve
+the last observed stage; a reset DPI table is restored without an unnecessary
+write when it already matches. Disabling customization stops restoring
 saved DPI; it leaves the current hardware values in place.
 
 **Gaming starting point** prepares 800 DPI, 1,000 Hz, flat acceleration, neutral

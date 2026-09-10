@@ -71,6 +71,17 @@ def page(Gtk, Adw, GLib, read_status, save_json):
         polling.set_selected(rates.index(now['polling_hz']))
         hint.set_label('Current hardware values loaded. Apply to save your changes.')
     load_button.connect('clicked', load_actual)
+    fixed = Gtk.Button(label='Use one DPI for all stages')
+    box.append(fixed)
+    def fixed_dpi(_):
+        selected = spins[active.get_selected()]
+        selected.update()
+        value = selected.get_value_as_int()
+        for spin in spins:
+            spin.set_value(value)
+        manage.set_active(True)
+        hint.set_label(f'Prepared {value:,} DPI for every stage. Apply to prevent the DPI button changing speed.')
+    fixed.connect('clicked', fixed_dpi)
 
     pointer = Adw.PreferencesGroup(title='Desktop pointer', description='Applies only to this HyperX mouse in Hyprland. Games using raw input may ignore these controls.')
     box.append(pointer)

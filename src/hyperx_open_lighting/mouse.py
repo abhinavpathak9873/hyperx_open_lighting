@@ -75,12 +75,20 @@ def read(device):
     return report, decode(report)
 
 
-def apply(device, settings):
-    before, _ = read(device)
+def apply(device, settings, heartbeat=None):
+    before, actual = read(device)
+    if actual == settings:
+        device.dpi_stage = actual['active']
+        return actual
+    if heartbeat:
+        heartbeat()
     device.exchange(build(before, settings))
+    if heartbeat:
+        heartbeat()
     _, actual = read(device)
     if actual != settings:
         raise RuntimeError('Mouse DPI readback does not match requested settings')
+    device.dpi_stage = actual['active']
     return actual
 
 
