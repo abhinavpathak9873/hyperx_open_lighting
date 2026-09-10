@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.2
+
+- Persistent single-DPI mode keeps later edits synchronized across every stage.
+- Prevent mouse-wheel page navigation from changing DPI, acceleration or slider values.
+- Reject stale-window saves instead of overwriting newer mouse settings.
+- Treat stage-button changes as equivalent when all DPI stages are identical.
+
 ## 0.2.1
 
 - Failed mouse DPI queries no longer stop RGB streaming for three seconds.

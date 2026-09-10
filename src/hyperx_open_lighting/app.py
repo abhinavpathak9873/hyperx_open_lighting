@@ -463,7 +463,7 @@ def gui(default_page='lighting'):
                                     application_name='HyperX Open Lighting',
                                     application_icon='local.hyperx.RGB',
                                     developer_name='HyperX Open Lighting contributors',
-                                    version='0.2.1',
+                                    version='0.2.2',
                                     website='https://github.com/abhinavpathak9873/hyperx_open_lighting',
                                     issue_url='https://github.com/abhinavpathak9873/hyperx_open_lighting/issues',
                                     license_type=Gtk.License.MIT_X11)
@@ -630,7 +630,7 @@ def gui(default_page='lighting'):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--version', action='version', version='HyperX Open Lighting 0.2.1')
+    parser.add_argument('--version', action='version', version='HyperX Open Lighting 0.2.2')
     parser.add_argument('--doctor', action='store_true', help='Show dependency and device access checks')
     switch = parser.add_mutually_exclusive_group()
     switch.add_argument('--enable', action='store_true', help='Enable selected devices')

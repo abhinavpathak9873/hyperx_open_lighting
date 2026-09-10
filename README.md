@@ -42,7 +42,7 @@ also run in Ubuntu 24.04. Other distributions are best effort.
 Download the `.deb` from [Releases](https://github.com/abhinavpathak9873/hyperx_open_lighting/releases), then:
 
 ```sh
-sudo apt install ./hyperx-open-lighting_0.2.1_all.deb
+sudo apt install ./hyperx-open-lighting_0.2.2_all.deb
 ```
 
 Open **HyperX Open Lighting** from your application launcher. Opening it enables
@@ -115,7 +115,12 @@ Changing a hardware control enables customization automatically. Supported DPI
 is **50–12,000 in steps of 50**; polling rates are **125, 250, 500 and 1,000 Hz**.
 The app preserves stage colors and unrelated table bytes, then verifies readback.
 The physical DPI button still cycles stages. **Use one DPI for all stages** copies
-the selected DPI across all four stages so the button cannot change sensitivity.
+the selected DPI across all four stages and enables persistent **Keep a single DPI**
+mode. Subsequent edits stay synchronized, so the DPI button cannot change
+sensitivity. Turn this mode off explicitly to configure different stages.
+Wheel scrolling over controls scrolls the page instead of changing settings.
+An older window cannot overwrite settings changed by another window or the CLI;
+reopen it to load the latest settings before applying.
 Apply and login restore your saved selection. Transient wireless retries preserve
 the last observed stage; a reset DPI table is restored without an unnecessary
 write when it already matches. Disabling customization stops restoring

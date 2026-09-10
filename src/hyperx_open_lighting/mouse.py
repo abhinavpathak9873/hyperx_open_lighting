@@ -12,12 +12,15 @@ DEVICE_NAME = 'hp--inc-hyperx-pulsefire-haste-2-core-wireless'
 RATES = {125: 64, 250: 32, 500: 16, 1000: 8}
 BASE = Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config')))
 CONFIG = BASE / 'hyperx-rgb/mouse.json'
-DEFAULT = {'dpi': None, 'pointer': None}
+DEFAULT = {'dpi': None, 'pointer': None, 'fixed_dpi': False}
 
 
 def validate(data):
-    if not isinstance(data, dict) or set(data) != set(DEFAULT):
+    if not isinstance(data, dict) or not {'dpi', 'pointer'} <= set(data) or set(data) - set(DEFAULT):
         raise ValueError('Mouse settings must contain dpi and pointer')
+    data = json.loads(json.dumps({**DEFAULT, **data}))
+    if type(data['fixed_dpi']) is not bool:
+        raise ValueError('fixed_dpi must be true or false')
     dpi, pointer = data['dpi'], data['pointer']
     if dpi is not None:
         if not isinstance(dpi, dict) or set(dpi) != {'stages', 'active', 'polling_hz'}:
@@ -29,6 +32,8 @@ def validate(data):
             raise ValueError('Choose DPI stage 1–4')
         if type(dpi['polling_hz']) is not int or dpi['polling_hz'] not in RATES:
             raise ValueError('Polling rate must be 125, 250, 500 or 1,000 Hz')
+        if data['fixed_dpi']:
+            dpi['stages'] = [dpi['stages'][dpi['active']]] * 4
     if pointer is not None:
         if not isinstance(pointer, dict) or set(pointer) != {'sensitivity', 'acceleration', 'scroll_factor', 'natural_scroll'}:
             raise ValueError('Invalid pointer settings')
@@ -43,6 +48,13 @@ def validate(data):
 
 def load():
     return validate(json.loads(CONFIG.read_text())) if CONFIG.exists() else dict(DEFAULT)
+
+
+def check_snapshot(expected):
+    current = load()
+    if current != expected:
+        raise RuntimeError('Mouse settings changed outside this window. Reopen the app to load them before applying.')
+    return current
 
 
 def decode(report):

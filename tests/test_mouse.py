@@ -12,6 +12,22 @@ REPORT = bytes.fromhex('33 02 08 0f 01 07 00 ff 00 00 0f 00 00 00 ff 1f 00 ff ff
 
 
 class MouseTest(unittest.TestCase):
+    def test_fixed_dpi_normalizes_all_stages_to_selected_value(self):
+        data = {'dpi': {'stages': [600, 750, 800, 800], 'active': 1, 'polling_hz': 1000},
+                'pointer': None, 'fixed_dpi': True}
+        result = mouse.validate(data)
+        self.assertEqual(result['dpi']['stages'], [750] * 4)
+        self.assertEqual(data['dpi']['stages'], [600, 750, 800, 800])
+        self.assertFalse(mouse.validate({'dpi': None, 'pointer': None})['fixed_dpi'])
+
+    def test_stale_window_cannot_overwrite_current_settings(self):
+        old = dict(mouse.DEFAULT)
+        changed = {**old, 'dpi': mouse.decode(REPORT)}
+        with patch.object(mouse, 'load', return_value=changed):
+            with self.assertRaisesRegex(RuntimeError, 'outside this window'):
+                mouse.check_snapshot(old)
+            self.assertEqual(mouse.check_snapshot(changed), changed)
+
     def test_decode_and_preserve_non_dpi_fields(self):
         original = mouse.decode(REPORT)
         self.assertEqual(original, {'stages': [400, 800, 1600, 3200], 'active': 1, 'polling_hz': 1000})

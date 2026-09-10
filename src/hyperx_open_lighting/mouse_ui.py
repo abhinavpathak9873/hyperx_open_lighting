@@ -39,6 +39,8 @@ def page(Gtk, Adw, GLib, read_status, save_json):
     manage = Gtk.Switch(active=saved['dpi'] is not None)
     row(hardware, 'Customize hardware DPI', manage, 'Saved settings restore at login and reconnect. Turning off leaves current hardware values in place.')
     spins = []
+    locked = Gtk.Switch(active=saved['fixed_dpi'])
+    row(hardware, 'Keep a single DPI', locked, 'Edits stay synchronized across stages; the DPI button cannot change speed.')
     for i, value in enumerate(initial['stages']):
         spin = Gtk.SpinButton.new_with_range(50, 12000, 50)
         spin.set_value(value)
@@ -53,8 +55,21 @@ def page(Gtk, Adw, GLib, read_status, save_json):
     polling = Gtk.DropDown.new_from_strings([f'{v:,} Hz' for v in rates])
     polling.set_selected(rates.index(initial['polling_hz']))
     row(hardware, 'Polling rate', polling, 'Higher rates can use more battery.')
+    syncing = False
+    def spin_changed(changed):
+        nonlocal syncing
+        manage.set_active(True)
+        if syncing or not locked.get_active():
+            return
+        syncing = True
+        try:
+            for spin in spins:
+                spin.set_value(changed.get_value())
+        finally:
+            syncing = False
     for spin in spins:
-        spin.connect('value-changed', lambda _: manage.set_active(True))
+        spin.connect('value-changed', spin_changed)
+    locked.connect('notify::active', lambda *_: spin_changed(spins[active.get_selected()]))
     for dropdown in (active, polling):
         dropdown.connect('notify::selected', lambda *_: manage.set_active(True))
     load_button = Gtk.Button(label='Use current mouse values')
@@ -74,6 +89,7 @@ def page(Gtk, Adw, GLib, read_status, save_json):
     fixed = Gtk.Button(label='Use one DPI for all stages')
     box.append(fixed)
     def fixed_dpi(_):
+        locked.set_active(True)
         selected = spins[active.get_selected()]
         selected.update()
         value = selected.get_value_as_int()
@@ -123,7 +139,8 @@ def page(Gtk, Adw, GLib, read_status, save_json):
     presets.append(normal)
     box.append(presets)
     def gaming_preset(_):
-        for spin, value in zip(spins, [400, 800, 1600, 3200]):
+        locked.set_active(True)
+        for spin, value in zip(spins, [800] * 4):
             spin.set_value(value)
         active.set_selected(1)
         polling.set_selected(rates.index(1000))
@@ -159,7 +176,8 @@ def page(Gtk, Adw, GLib, read_status, save_json):
                                 'acceleration': ('flat', 'adaptive')[acceleration.get_selected()],
                                 'scroll_factor': round(scroll.get_value(), 1),
                                 'natural_scroll': natural.get_active()}
-                    if override.get_active() and can_pointer else None}
+                    if override.get_active() and can_pointer else None,
+                    'fixed_dpi': locked.get_active()}
             if not can_pointer:
                 data['pointer'] = mouse.load()['pointer']
             data = mouse.validate(data)
@@ -168,7 +186,10 @@ def page(Gtk, Adw, GLib, read_status, save_json):
             return
         apply_button.set_sensitive(False)
         hint.set_label('Applying…')
-        def complete(message):
+        def complete(message, persisted=None):
+            nonlocal saved
+            if persisted is not None:
+                saved = persisted
             hint.set_label(message)
             apply_button.set_sensitive(True)
             return GLib.SOURCE_REMOVE
@@ -176,7 +197,7 @@ def page(Gtk, Adw, GLib, read_status, save_json):
             previous = None
             changed_pointer = False
             try:
-                previous = mouse.load()
+                previous = mouse.check_snapshot(saved)
                 if can_pointer and (data['pointer'] is not None or previous['pointer'] is not None):
                     mouse.apply_pointer(data['pointer'])
                     changed_pointer = True
@@ -189,7 +210,9 @@ def page(Gtk, Adw, GLib, read_status, save_json):
                         mouse.apply_pointer(previous['pointer'])
                     except Exception as rollback:
                         message += '; pointer rollback failed: ' + str(rollback)
-            GLib.idle_add(complete, message)
+                GLib.idle_add(complete, message)
+                return
+            GLib.idle_add(complete, message, data)
         threading.Thread(target=work).start()
     apply_button.connect('clicked', apply_clicked)
     confirmation = text('', 'dim-label')
@@ -210,9 +233,12 @@ def page(Gtk, Adw, GLib, read_status, save_json):
             confirmation.set_label('Could not apply mouse settings: ' + problem)
         else:
             try:
-                desired = mouse.load()['dpi']
+                current_saved = mouse.load()
+                desired = current_saved['dpi']
                 if desired and dpi:
-                    confirmation.set_label('Saved DPI table verified on mouse.' if dpi == desired else
+                    same_speed = current_saved['fixed_dpi'] and dpi['stages'] == desired['stages'] and dpi['polling_hz'] == desired['polling_hz']
+                    confirmation.set_label('Single DPI verified on every stage.' if same_speed else
+                        'Saved DPI table verified on mouse.' if dpi == desired else
                         'Current mouse stage/table differs from saved settings. Apply to restore your selection.')
                 elif desired:
                     confirmation.set_label('Saved DPI settings are waiting for the mouse.')
@@ -225,6 +251,16 @@ def page(Gtk, Adw, GLib, read_status, save_json):
     root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
     scroller = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER, vexpand=True)
     scroller.set_child(box)
+    # Wheel navigation must not silently edit a hovered DPI/acceleration control.
+    def wheel_navigation(_controller, _dx, dy):
+        adj = scroller.get_vadjustment()
+        adj.set_value(adj.get_value() + dy * 45)
+        return True
+    for widget in [*spins, active, polling, acceleration, sensitivity, scroll]:
+        controller = Gtk.EventControllerScroll.new(Gtk.EventControllerScrollFlags.VERTICAL)
+        controller.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        controller.connect('scroll', wheel_navigation)
+        widget.add_controller(controller)
     root.append(scroller)
     root.append(footer)
     return root
