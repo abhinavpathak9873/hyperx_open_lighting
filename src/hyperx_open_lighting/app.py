@@ -3,7 +3,7 @@
 
 The protocol core uses the standard library; the GUI uses system GTK4/Adwaita.
 
-Uses volatile lighting reports, never firmware, key mapping or flash commands.
+Uses volatile lighting and mouse DPI reports, never firmware, key mapping or flash commands.
 Protocol notes and hardware verification are in README.md alongside this file.
 """
 import argparse
@@ -21,6 +21,10 @@ import sys
 import tempfile
 import threading
 import time
+try:
+    from . import mouse, mouse_ui
+except ImportError:
+    import mouse, mouse_ui
 
 ROOT = Path(__file__).resolve().parent
 CONFIG_DIR = Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config'))) / 'hyperx-rgb'
@@ -159,7 +163,7 @@ class Device:
             received.append(item)
             if item[:2] == b'\xff\x01' and item[14] in (data[0], data[0] + 1) and item[15] == data[1]:
                 if item[16] != 0:
-                    raise RuntimeError(f'Device rejected lighting command {data[0]:02x}/{data[1]:02x}')
+                    raise RuntimeError(f'Device rejected command {data[0]:02x}/{data[1]:02x}')
                 self.acks += 1
                 if response is None:
                     return received
@@ -221,12 +225,18 @@ def device_worker(key, shared, guard, stopping):
     frames = 0
     previous_frame = None
     max_gap = 0.0
+    dpi_applied = None
+    dpi_actual = None
+    dpi_checked = 0
+    dpi_error = None
     try:
         while not stopping.is_set():
             started = time.monotonic()
             with guard:
                 settings = shared['settings'][key].copy()
-            if not settings['enabled']:
+                dpi_desired = shared.get('mouse_settings', {}).get('dpi') if key == 'mouse' else None
+                dpi_request = (dpi_desired, shared.get('mouse_revision', 0))
+            if not settings['enabled'] and dpi_desired is None:
                 if device is not None:
                     device.close()
                     device = None
@@ -245,6 +255,27 @@ def device_worker(key, shared, guard, stopping):
                     device = Device(key, path)
                     applied = None
                     previous_frame = None
+                    dpi_applied, dpi_actual, dpi_checked = None, None, 0
+                if key == 'mouse' and (dpi_request != dpi_applied or started - dpi_checked >= 2):
+                    try:
+                        if dpi_desired is not None and dpi_request != dpi_applied:
+                            dpi_actual = mouse.apply(device, dpi_desired)
+                            dpi_applied = dpi_request
+                        else:
+                            _, dpi_actual = mouse.read(device)
+                            dpi_applied = dpi_request
+                        dpi_error = None
+                    except (ValueError, RuntimeError) as exc:
+                        dpi_error = str(exc)
+                        # Retry rejected settings only after a new request or reconnect.
+                        dpi_applied = dpi_request
+                    dpi_checked = started
+                if not settings['enabled']:
+                    with guard:
+                        shared['devices'][key] = {'state': 'Lighting paused', 'dpi': dpi_actual,
+                                                 'dpi_error': dpi_error, **device.info}
+                    stopping.wait(.25)
+                    continue
                 if applied is None or settings['brightness'] != applied['brightness']:
                     device.brightness(settings['brightness'])
                 # Even identical static/off frames must be streamed: otherwise
@@ -264,6 +295,7 @@ def device_worker(key, shared, guard, stopping):
                         'acknowledged_commands': device.acks, 'frames_sent': frames,
                         'max_frame_gap_ms': round(max_gap * 1000, 1),
                         'target_fps': 20, **device.info,
+                        **({'dpi': dpi_actual, 'dpi_error': dpi_error} if key == 'mouse' else {}),
                     }
             except (OSError, RuntimeError, TimeoutError, StopIteration) as exc:
                 if device is not None:
@@ -291,7 +323,7 @@ def daemon():
         initial = load_settings()
     except (OSError, ValueError, TypeError):
         initial = {key: {**value, 'enabled': False} for key, value in DEFAULT.items()}
-    shared = {'settings': initial, 'devices': {}}
+    shared = {'settings': initial, 'devices': {}, 'mouse_settings': dict(mouse.DEFAULT)}
 
     def stop(*_):
         stopping.set()
@@ -311,10 +343,17 @@ def daemon():
                     shared['settings'] = settings
             except (OSError, ValueError, KeyError, TypeError) as exc:
                 config_error = str(exc)
+            mouse_error = None
+            try:
+                with guard:
+                    shared['mouse_settings'] = mouse.load()
+                    shared['mouse_revision'] = mouse.CONFIG.stat().st_mtime_ns if mouse.CONFIG.exists() else 0
+            except (OSError, ValueError, KeyError, TypeError) as exc:
+                mouse_error = str(exc)
             with guard:
                 status = dict(shared['devices'])
             atomic_json(STATUS, {'updated': time.time(), 'devices': status,
-                                 'config_error': config_error})
+                                 'config_error': config_error, 'mouse_config_error': mouse_error})
             stopping.wait(.25)
     finally:
         stopping.set()
@@ -339,7 +378,7 @@ def ensure_service():
                    check=True, capture_output=True, text=True, timeout=15)
 
 
-def gui():
+def gui(default_page='lighting'):
     import gi
     gi.require_version('Gtk', '4.0')
     gi.require_version('Adw', '1')
@@ -360,10 +399,10 @@ def gui():
         window = Adw.ApplicationWindow(application=application, title='HyperX Open Lighting')
         window.set_icon_name('local.hyperx.RGB')
         window.set_default_size(820, 720)
-        window.set_resizable(False)
+        window.set_resizable(True)
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         header = Adw.HeaderBar()
-        header.set_title_widget(Adw.WindowTitle(title='HyperX Open Lighting', subtitle='Keyboard & mouse lighting'))
+        header.set_title_widget(Adw.WindowTitle(title='HyperX Open Lighting', subtitle='Lighting & mouse control'))
         about = Gtk.Button(icon_name='help-about-symbolic')
         about.set_tooltip_text('About HyperX Open Lighting')
         def show_about(_button):
@@ -371,7 +410,7 @@ def gui():
                                     application_name='HyperX Open Lighting',
                                     application_icon='local.hyperx.RGB',
                                     developer_name='HyperX Open Lighting contributors',
-                                    version='0.1.0',
+                                    version='0.2.0',
                                     website='https://github.com/abhinavpathak9873/hyperx_open_lighting',
                                     issue_url='https://github.com/abhinavpathak9873/hyperx_open_lighting/issues',
                                     license_type=Gtk.License.MIT_X11)
@@ -382,7 +421,16 @@ def gui():
         content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18)
         for method in ('set_margin_start', 'set_margin_end', 'set_margin_top', 'set_margin_bottom'):
             getattr(content, method)(24)
-        outer.append(content)
+        stack = Gtk.Stack()
+        stack.set_vexpand(True)
+        switcher = Gtk.StackSwitcher(stack=stack, halign=Gtk.Align.CENTER)
+        outer.append(switcher)
+        outer.append(stack)
+        lighting_scroll = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER)
+        lighting_scroll.set_child(content)
+        stack.add_titled(lighting_scroll, 'lighting', 'Lighting')
+        stack.add_titled(mouse_ui.page(Gtk, Adw, GLib, read_status, atomic_json), 'mouse', 'Mouse')
+        stack.set_visible_child_name(default_page)
         cards = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=16, homogeneous=True)
         content.append(cards)
         try:
@@ -529,17 +577,20 @@ def gui():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--version', action='version', version='HyperX Open Lighting 0.1.0')
+    parser.add_argument('--version', action='version', version='HyperX Open Lighting 0.2.0')
     parser.add_argument('--doctor', action='store_true', help='Show dependency and device access checks')
     switch = parser.add_mutually_exclusive_group()
     switch.add_argument('--enable', action='store_true', help='Enable selected devices')
     switch.add_argument('--disable', action='store_true', help='Pause selected devices immediately')
     parser.add_argument('--daemon', action='store_true')
     parser.add_argument('--status', action='store_true')
+    parser.add_argument('--mouse-settings', action='store_true', help='Open the Mouse tab')
     parser.add_argument('--device', choices=('keyboard', 'mouse', 'both'), default='both')
     parser.add_argument('--color', help='Hex RGB color, e.g. ff0000')
     parser.add_argument('--brightness', type=int)
     parser.add_argument('--mode', choices=MODES)
+    parser.add_argument('--dpi', type=int, help='Set active mouse stage DPI (50–12000, steps of 50)')
+    parser.add_argument('--polling-rate', type=int, choices=tuple(mouse.RATES), help='Mouse polling rate in Hz')
     args = parser.parse_args()
     if args.doctor:
         result = {}
@@ -561,6 +612,21 @@ def main():
         daemon()
     elif args.status:
         print(json.dumps(read_status(), indent=2))
+    elif args.dpi is not None or args.polling_rate is not None:
+        settings = mouse.load()
+        actual = read_status().get('devices', {}).get('mouse', {}).get('dpi')
+        dpi = settings['dpi'] or actual
+        if dpi is None:
+            raise RuntimeError('Wake the mouse and wait for its DPI status before changing it')
+        dpi = json.loads(json.dumps(dpi))
+        if args.dpi is not None:
+            dpi['stages'][dpi['active']] = args.dpi
+        if args.polling_rate is not None:
+            dpi['polling_hz'] = args.polling_rate
+        settings['dpi'] = dpi
+        atomic_json(mouse.CONFIG, mouse.validate(settings))
+        ensure_service()
+        print('Saved mouse settings. Check --status for hardware readback.')
     elif args.color is not None or args.brightness is not None or args.mode is not None or args.enable or args.disable:
         settings = load_settings()
         for key in DEVICES if args.device == 'both' else (args.device,):
@@ -576,7 +642,7 @@ def main():
         ensure_service()
         print('Saved settings.')
     else:
-        gui()
+        gui('mouse' if args.mouse_settings else 'lighting')
 
 
 if __name__ == '__main__':

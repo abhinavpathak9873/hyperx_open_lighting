@@ -1,6 +1,6 @@
 <p align="center"><img src="assets/icons/local.hyperx.RGB.svg" width="128" alt="HyperX Open Lighting icon"></p>
 <h1 align="center">HyperX Open Lighting</h1>
-<p align="center">A small Linux app for your keyboard and mouse colors.</p>
+<p align="center">Native Linux lighting and mouse controls for selected HyperX devices.</p>
 
 <p align="center"><a href="https://github.com/abhinavpathak9873/hyperx_open_lighting/releases">Download</a> · <a href="docs/PROTOCOL.md">Protocol notes</a> · <a href="CONTRIBUTING.md">Contribute</a></p>
 
@@ -17,12 +17,14 @@ keyboard reconnect during setup.
 - Choose static, breathing, color cycle, rainbow wave or off.
 - Save locally and keep lighting running after closing the window.
 - Start automatically at desktop login and retry sleeping/disconnected devices.
-- Control only the devices' RGB interfaces; no root background process.
+- Control only the devices' native control interfaces; no root background process.
+- Edit four hardware DPI stages (50–12,000), select the active stage and polling rate.
+- Adjust per-mouse sensitivity, acceleration, scroll speed and direction on Hyprland.
 
 | Device | USB ID | Current status |
 | --- | --- | --- |
 | HyperX Alloy Rise 75, wired | `03f0:02a1` | RGB, brightness and physical modifier operation tested |
-| HyperX Pulsefire Haste 2 Core Wireless, USB receiver | `03f0:0ab5` | Lighting/brightness commands tested; limited field testing |
+| HyperX Pulsefire Haste 2 Core Wireless, USB receiver | `03f0:0ab5` | RGB, brightness and DPI readback tested; polling controls included |
 
 Other models and Bluetooth connections are not supported. The mouse has one RGB
 zone, so its rainbow wave appears as a color cycle. Software effects need the
@@ -40,7 +42,7 @@ also run in Ubuntu 24.04. Other distributions are best effort.
 Download the `.deb` from [Releases](https://github.com/abhinavpathak9873/hyperx_open_lighting/releases), then:
 
 ```sh
-sudo apt install ./hyperx-open-lighting_0.1.0_all.deb
+sudo apt install ./hyperx-open-lighting_0.2.0_all.deb
 ```
 
 Open **HyperX Open Lighting** from your application launcher. Opening it enables
@@ -76,7 +78,7 @@ installs the app under `~/.local/share/hyperx-rgb`, adds a launcher and icon, an
 enables its user service. On Omarchy the same dependencies can also be installed
 with `omarchy pkg add python python-gobject gtk4 libadwaita`.
 
-The first release provides a native installer and a `.deb`, **not an AppImage**.
+Releases provide a native installer and a `.deb`, **not an AppImage**.
 GTK, USB access and login integration are explicit system dependencies; the
 archive is not advertised as a self-contained executable.
 
@@ -103,6 +105,52 @@ hyperx-open-lighting --device keyboard --enable
 ```
 
 The user installer also provides the `hyperx-rgb` command for compatibility.
+
+### Mouse controls
+
+Open the **Mouse** tab. It displays the mouse's current hardware DPI and polling
+rate, refreshed every two seconds. Enable **Customize hardware DPI**, edit the
+four stages, choose the selected stage and click **Apply mouse settings**.
+Changing a hardware control enables customization automatically. Supported DPI
+is **50–12,000 in steps of 50**; polling rates are **125, 250, 500 and 1,000 Hz**.
+The app preserves stage colors and unrelated table bytes, then verifies readback.
+The physical DPI button still cycles stages. Apply restores your saved selection;
+login and reconnect also restore it. Disabling customization stops restoring
+saved DPI; it leaves the current hardware values in place.
+
+**Gaming starting point** prepares 800 DPI, 1,000 Hz, flat acceleration, neutral
+pointer sensitivity and normal scrolling; click Apply to use it. This is a
+starting point, not a universally best sensitivity. Fine-tune in-game sensitivity
+for your preference. **Desktop defaults** removes the app's pointer overrides
+when applied, without changing hardware DPI.
+
+Desktop controls currently require **Hyprland**. Sensitivity ranges from −1 to
++1, acceleration can be flat or adaptive, and wheel speed ranges from 0.1× to 5×.
+Natural scrolling reverses the direction. These controls target only the Haste 2
+Core mouse; other pointing devices retain their own settings. Games using raw
+input may bypass desktop controls, and individual apps can further scale scroll.
+Hardware DPI works on other supported systemd desktops; pointer controls are
+shown unavailable there.
+
+DPI is saved separately in `~/.config/hyperx-rgb/mouse.json`, so lighting CLI
+updates and wallpaper integration cannot erase it. Hyprland pointer settings
+use a guarded include from `hyprland.lua` (or `source` in `hyprland.conf`) to
+`~/.config/hyperx-rgb/pointer.lua` / `pointer.conf`. The main configuration is
+backed up before adding the include; invalid changes are rolled back. Custom
+Hyprland config paths need manual integration. The source uninstaller and Debian
+removal retain these user settings; apply **Desktop defaults** first if you want
+the pointer overrides removed. Changes persist at desktop login, not pre-login.
+
+```sh
+hyperx-open-lighting --dpi 800
+hyperx-open-lighting --polling-rate 1000
+hyperx-open-lighting --status  # includes actual DPI and readback errors
+```
+
+![Mouse settings](docs/mouse-settings.png)
+
+![Pointer settings](docs/pointer-settings.png)
+
 
 ## Troubleshoot
 

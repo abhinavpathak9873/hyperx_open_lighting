@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.0
+
+- Mouse tab with four hardware DPI stages, active-stage selection and polling rate.
+- Haste 2 Core Wireless range validation and verified DPI readback.
+- Hyprland per-mouse sensitivity, flat/adaptive acceleration, scroll speed and natural scrolling.
+- Separate mouse settings preserve wallpaper lighting integration.
+- DPI restores at login/reconnect; physical DPI button changes remain usable.
+- Gaming preset, desktop-default reset, persistent Apply button and CLI controls.
+- Pointer config backups and rollback on validation failure.
+
 ## 0.1.0
 
 - Native GTK4/libadwaita interface with a custom keyboard-and-mouse icon.

@@ -13,6 +13,10 @@ class SlowMouse:
     def brightness(self, value):
         return value
 
+    def exchange(self, data, response=None):
+        time.sleep(.6)
+        raise TimeoutError('Simulated sleeping wireless mouse')
+
     def frame(self, colors):
         if self.key == 'mouse':
             time.sleep(.6)

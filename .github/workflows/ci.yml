@@ -47,4 +47,4 @@ jobs:
         run: |
           extra=()
           if [[ "$TAG" == *alpha* || "$TAG" == *beta* || "$TAG" == *rc* ]]; then extra+=(--prerelease); fi
-          gh release create "$TAG" dist/*.tar.gz dist/*.deb dist/SHA256SUMS --verify-tag --title "HyperX Open Lighting $TAG" --notes 'Native Linux lighting control for Alloy Rise 75 and Pulsefire Haste 2 Core Wireless. Includes a user installer, Debian package, custom icon and background startup. See the README for installation and troubleshooting.' "${extra[@]}"
+          gh release create "$TAG" dist/*.tar.gz dist/*.deb dist/SHA256SUMS --verify-tag --title "HyperX Open Lighting $TAG" --notes 'Native Linux lighting and mouse controls for Alloy Rise 75 and Pulsefire Haste 2 Core Wireless. Includes four hardware DPI stages, polling rate, Hyprland pointer sensitivity, acceleration and scroll settings, a user installer, Debian package and background startup. See the README and protocol notes for installation and validation details.' "${extra[@]}"

@@ -1,10 +1,10 @@
 [Desktop Entry]
 Type=Application
 Name=HyperX Open Lighting
-Comment=Control HyperX keyboard and mouse lighting on Linux
+Comment=Control HyperX lighting, mouse DPI and pointer settings on Linux
 Exec=hyperx-open-lighting
 Icon=local.hyperx.RGB
 Terminal=false
 Categories=Settings;HardwareSettings;
-Keywords=HyperX;RGB;keyboard;mouse;lighting;
+Keywords=HyperX;RGB;keyboard;mouse;lighting;DPI;sensitivity;scroll;
 StartupWMClass=local.hyperx.RGB
