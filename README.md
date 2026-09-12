@@ -32,6 +32,22 @@ zone, so its rainbow wave appears as a color cycle. Software effects need the
 background service and may increase wireless battery consumption. Settings are
 saved on the computer; the app does not write onboard flash profiles.
 
+## Sync with OpenRGB
+
+Select **Sync with OpenRGB** in any device's **Effect** menu, then **Apply & save**.
+The microphone follows its native OpenRGB controller, including profiles and effects.
+The keyboard and mouse mirror the **first LED of the first OpenRGB controller**
+as a uniform color; the source name is shown in status. Their brightness remains
+adjustable. This follows the SDK-reported color, not a translation of per-LED
+layouts or onboard hardware effects whose live colors OpenRGB does not report.
+The source is resolved again after a rescan, so reordering OpenRGB devices can
+change the source. When the server is unavailable they hold the last color (off
+until the first successful read), keeping USB streaming independent of SDK delays.
+
+```sh
+hyperx-open-lighting --device all --mode 'Sync with OpenRGB'
+```
+
 ## QuadCast 2 S and OpenRGB
 
 The microphone uses OpenRGB's native **HyperX QuadCast 2 S** driver. OpenRGB is
@@ -45,24 +61,21 @@ controls are not modified.
    `openrgb --server --server-host 127.0.0.1 --startminimized`.
 3. Check that the microphone appears with **108 LEDs** in OpenRGB. If you plugged
    it in after OpenRGB started, rescan or restart OpenRGB.
-4. Open HyperX Open Lighting. The microphone defaults to **Follow OpenRGB**.
+4. Open HyperX Open Lighting. The microphone defaults to **Sync with OpenRGB**.
    Its colors, effects and saved profiles then come directly from OpenRGB.
    Include it in your usual OpenRGB startup profile and wallpaper sync.
-
-The **Sync with OpenRGB** button on the microphone card enables Follow OpenRGB
-and saves immediately, without an extra Apply step.
 
 Choose a manual effect on the microphone card and **Apply & save** to control it
 from this app. Brightness scales the RGB output. Animated effects stream through
 the SDK; static/off are applied once per saved change or SDK reconnect. In manual
-animated mode this app controls the colors; choose **Follow OpenRGB** before
+animated mode this app controls the colors; choose **Sync with OpenRGB** before
 using OpenRGB effects/profiles. Follow mode stops app writes; it does not reload
 an earlier OpenRGB profile automatically. Disabling microphone control also
 leaves OpenRGB in charge and does not turn off the microphone or its lights.
 
 ```sh
 hyperx-open-lighting --device microphone --mode Static --color 78824b
-hyperx-open-lighting --device microphone --mode 'Follow OpenRGB'
+hyperx-open-lighting --device microphone --mode 'Sync with OpenRGB'
 ```
 
 `--device both` retains its keyboard-and-mouse meaning; `--device all` includes
@@ -82,7 +95,7 @@ also run in Ubuntu 24.04. Other distributions are best effort.
 Download the `.deb` from [Releases](https://github.com/abhinavpathak9873/hyperx_open_lighting/releases), then:
 
 ```sh
-sudo apt install ./hyperx-open-lighting_0.3.0_all.deb
+sudo apt install ./hyperx-open-lighting_0.3.1_all.deb
 ```
 
 Open **HyperX Open Lighting** from your application launcher. Opening it enables

@@ -7,6 +7,46 @@ NAME = 'HyperX QuadCast 2 S'
 LEDS = 108
 
 
+def sync_worker(shared, guard, stopping):
+    """Read a representative OpenRGB color without ever blocking USB workers."""
+    sdk = None
+    try:
+        while not stopping.is_set():
+            started = time.monotonic()
+            with guard:
+                enabled = any(shared['settings'][k]['enabled'] and
+                              shared['settings'][k]['mode'] == 'Sync with OpenRGB'
+                              for k in ('keyboard', 'mouse'))
+            if not enabled:
+                if sdk:
+                    sdk.close()
+                sdk = None
+                stopping.wait(.5)
+                continue
+            delay = .1
+            try:
+                if sdk is None:
+                    sdk = SDK()
+                # Resolve afresh after rescans rather than retaining a stale index.
+                sources = [(name, colors) for _, name, colors in sdk.devices() if colors]
+                if not sources:
+                    raise RuntimeError('No OpenRGB colors available')
+                name, colors = sources[0]
+                with guard:
+                    shared['openrgb_sync'] = {'source': name, 'color': list(colors[:3]), 'error': None}
+            except (OSError, RuntimeError, ValueError, struct.error) as exc:
+                if sdk:
+                    sdk.close()
+                sdk = None
+                with guard:
+                    shared['openrgb_sync'] = {**shared.get('openrgb_sync', {}), 'error': str(exc)}
+                delay = 2.
+            stopping.wait(max(0, delay - (time.monotonic() - started)))
+    finally:
+        if sdk:
+            sdk.close()
+
+
 def color_payload(colors):
     if len(colors) != LEDS or any(len(c) != 3 or any(type(v) is not int or not 0 <= v <= 255 for v in c) for c in colors):
         raise ValueError('QuadCast 2 S requires 108 RGB colors')
@@ -41,7 +81,7 @@ def worker(shared, guard, stopping, render):
                     name, actual = controller(sdk.request(1, struct.pack('<I', 2), index))
                     if name != NAME or len(actual) != LEDS * 4:
                         raise RuntimeError('OpenRGB devices changed · reconnecting')
-                    follow = settings['mode'] == 'Follow OpenRGB'
+                    follow = settings['mode'] == 'Sync with OpenRGB'
                     animated = settings['mode'] in ('Breathing', 'Color cycle', 'Rainbow wave')
                     if not follow and (settings != applied or animated):
                         colors = render('microphone', settings, started)

@@ -45,7 +45,7 @@ its onboard effect may appear until it responds again.
 
 Microphone control requires a running local OpenRGB SDK server with its native
 QuadCast 2 S driver. A mic plugged in after detection may need an OpenRGB rescan
-or restart. The app retries server/device discovery automatically. Follow OpenRGB
+or restart. The app retries server/device discovery automatically. Sync with OpenRGB
 does not change OpenRGB colors or effects; manual animated modes take precedence
-until Follow OpenRGB is selected again. SDK readback confirms accepted colors,
+until Sync with OpenRGB is selected again. SDK readback confirms accepted colors,
 not independently measured physical light output.

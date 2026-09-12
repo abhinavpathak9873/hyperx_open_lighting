@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.1
+
+- Make Sync with OpenRGB an effect on all device cards; remove the separate button.
+- Mirror OpenRGB's first controller/LED color to keyboard and mouse with a read-only background SDK worker, preserving continuous USB frames during server outages.
+- Keep the microphone's native profile-follow behavior and migrate its old Follow OpenRGB setting automatically.
+- Keep the selected effect during local wallpaper color updates.
+
 ## 0.3.0
 
 - Add QuadCast 2 S microphone lighting through the local OpenRGB SDK, using its native 108-LED driver as the sole USB owner.

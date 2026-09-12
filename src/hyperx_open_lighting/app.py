@@ -31,7 +31,7 @@ CONFIG_DIR = Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config')
 CONFIG = CONFIG_DIR / 'settings.json'
 RUNTIME = Path(os.environ.get('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}'))
 STATUS = RUNTIME / 'hyperx-rgb-status.json'
-MODES = ('Static', 'Breathing', 'Color cycle', 'Rainbow wave', 'Off')
+MODES = ('Static', 'Breathing', 'Color cycle', 'Rainbow wave', 'Off', 'Sync with OpenRGB')
 DEVICES = {
     'keyboard': {'pid': 0x02A1, 'name': 'Alloy Rise 75', 'leds': 103},
     'mouse': {'pid': 0x0AB5, 'name': 'Pulsefire Haste 2 Core Wireless', 'leds': 1},
@@ -41,11 +41,11 @@ LAYOUT = json.loads((ROOT / 'keyboard-layout.json').read_text())
 DEFAULT = {key: {'color': '#ff0000', 'brightness': 100, 'mode': 'Static', 'speed': 40, 'enabled': True}
            for key in DEVICES}
 
-DEFAULT['microphone']['mode'] = 'Follow OpenRGB'
+DEFAULT['microphone']['mode'] = 'Sync with OpenRGB'
 
 
 def modes_for(key):
-    return MODES + ('Follow OpenRGB',) if key == 'microphone' else MODES
+    return MODES
 
 
 def atomic_json(path, obj):
@@ -74,6 +74,8 @@ def validate(data):
         color = entry.get('color', '')
         if not isinstance(color, str) or not re.fullmatch(r'#[0-9a-fA-F]{6}', color):
             raise ValueError('Color must be a six-digit hex color such as #ff0000')
+        if entry.get('mode') == 'Follow OpenRGB':
+            entry = {**entry, 'mode': 'Sync with OpenRGB'}
         if entry.get('mode') not in modes_for(key):
             raise ValueError('Unknown lighting mode')
         for field in ('brightness', 'speed'):
@@ -256,11 +258,25 @@ def device_worker(key, shared, guard, stopping):
     reconnects = 0
     frame_failures = 0
 
+    last_sync_color = None
+
+    def lighting_frame(now):
+        nonlocal last_sync_color
+        if settings['mode'] == 'Sync with OpenRGB':
+            with guard:
+                synced = shared.get('openrgb_sync', {}).get('color')
+            if synced is not None:
+                last_sync_color = tuple(synced)
+            if last_sync_color is not None:
+                return [last_sync_color] * DEVICES[key]['leds']
+            return [(0, 0, 0)] * DEVICES[key]['leds']
+        return render(key, settings, now)
+
     def mouse_heartbeat():
         nonlocal frames, previous_frame, max_gap
         if not settings['enabled']:
             return
-        device.frame(render('mouse', settings, time.monotonic()))
+        device.frame(lighting_frame(time.monotonic()))
         completed = time.monotonic()
         frames += 1
         if previous_frame is not None:
@@ -340,7 +356,7 @@ def device_worker(key, shared, guard, stopping):
                     device.brightness(settings['brightness'])
                 # Even identical static/off frames must be streamed: otherwise
                 # firmware resumes its onboard lighting after host activity stops.
-                device.frame(render(key, settings, started))
+                device.frame(lighting_frame(started))
                 frame_failures = 0
                 if key == 'mouse' and dpi_actual and type(getattr(device, 'dpi_stage', None)) is int:
                     dpi_actual = {**dpi_actual, 'active': device.dpi_stage}
@@ -358,6 +374,7 @@ def device_worker(key, shared, guard, stopping):
                         'acknowledged_commands': device.acks, 'frames_sent': frames,
                         'max_frame_gap_ms': round(max_gap * 1000, 1),
                         'target_fps': 20, **device.info,
+                        **({'openrgb_sync': dict(shared.get('openrgb_sync', {}))} if settings['mode'] == 'Sync with OpenRGB' else {}),
                         **({'dpi': dpi_actual, 'dpi_error': dpi_error,
                             'dpi_query_failures': dpi_failures, 'connections': reconnects} if key == 'mouse' else {}),
                     }
@@ -398,6 +415,7 @@ def daemon():
     signal.signal(signal.SIGINT, stop)
     workers = [threading.Thread(target=device_worker, args=(key, shared, guard, stopping),
                                 name=f'hyperx-{key}') for key in DEVICES]
+    workers.append(threading.Thread(target=openrgb.sync_worker, args=(shared, guard, stopping), name='hyperx-openrgb-sync'))
     for worker in workers:
         worker.start()
     try:
@@ -419,7 +437,8 @@ def daemon():
             with guard:
                 status = dict(shared['devices'])
             atomic_json(STATUS, {'updated': time.time(), 'devices': status,
-                                 'config_error': config_error, 'mouse_config_error': mouse_error})
+                                 'config_error': config_error, 'mouse_config_error': mouse_error,
+                                 'openrgb_sync': dict(shared.get('openrgb_sync', {}))})
             stopping.wait(.25)
     finally:
         stopping.set()
@@ -476,7 +495,7 @@ def gui(default_page='lighting'):
                                     application_name='HyperX Open Lighting',
                                     application_icon='local.hyperx.RGB',
                                     developer_name='HyperX Open Lighting contributors',
-                                    version='0.3.0',
+                                    version='0.3.1',
                                     website='https://github.com/abhinavpathak9873/hyperx_open_lighting',
                                     issue_url='https://github.com/abhinavpathak9873/hyperx_open_lighting/issues',
                                     license_type=Gtk.License.MIT_X11)
@@ -568,25 +587,6 @@ def gui(default_page='lighting'):
             mode.set_selected(modes_for(key).index(settings[key]['mode']))
             card.append(mode)
             values = {'color': entry, 'swatch': color, 'mode': mode, 'enabled': enabled}
-            if key == 'microphone':
-                sync = Gtk.Button(label='Sync with OpenRGB')
-                sync.add_css_class('suggested-action')
-                sync.set_tooltip_text('Follow OpenRGB colors, effects and profiles. Saves immediately.')
-
-                def sync_openrgb(_button, widgets=values):
-                    try:
-                        current = load_settings()
-                        current['microphone']['mode'] = 'Follow OpenRGB'
-                        current['microphone']['enabled'] = True
-                        atomic_json(CONFIG, validate(current))
-                        widgets['enabled'].set_active(True)
-                        widgets['mode'].set_selected(modes_for('microphone').index('Follow OpenRGB'))
-                        hint.set_label('Saved. Microphone now follows OpenRGB; no extra Apply needed.')
-                    except (OSError, ValueError) as exc:
-                        hint.set_label(str(exc))
-
-                sync.connect('clicked', sync_openrgb)
-                card.append(sync)
             for field, text in [('brightness', 'Brightness'), ('speed', 'Effect speed')]:
                 card.append(label(text, 'dim-label'))
                 slider = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 100, 1)
@@ -596,17 +596,17 @@ def gui(default_page='lighting'):
                 slider.set_value_pos(Gtk.PositionType.RIGHT)
                 card.append(slider)
                 values[field] = slider
-            if key == 'microphone':
-                note = label('Follow OpenRGB uses its colors, effects and profiles. Manual effects override it until you select Follow OpenRGB again.', 'dim-label')
-                note.set_wrap(True)
-                note.set_max_width_chars(32)
-                card.append(note)
-                def follow_changed(dropdown, _param, widgets=values):
-                    follow = modes_for('microphone')[dropdown.get_selected()] == 'Follow OpenRGB'
-                    for field in ('color', 'swatch', 'brightness', 'speed'):
-                        widgets[field].set_sensitive(not follow)
-                mode.connect('notify::selected', follow_changed)
-                follow_changed(mode, None)
+            note = label('Sync with OpenRGB follows its profiles and effects.' if key == 'microphone' else 'Sync with OpenRGB mirrors the first LED of the first OpenRGB controller. Brightness stays adjustable.', 'dim-label')
+            note.set_wrap(True)
+            note.set_max_width_chars(32)
+            card.append(note)
+            def follow_changed(dropdown, _param, widgets=values, device_key=key):
+                follow = MODES[dropdown.get_selected()] == 'Sync with OpenRGB'
+                for field in ('color', 'swatch', 'speed'):
+                    widgets[field].set_sensitive(not follow)
+                widgets['brightness'].set_sensitive(not follow or device_key != 'microphone')
+            mode.connect('notify::selected', follow_changed)
+            follow_changed(mode, None)
             controls[key] = values
         footer = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=16)
         hint = label('Keeps running when this window closes.', 'dim-label')
@@ -665,7 +665,10 @@ def gui(default_page='lighting'):
                 info = current.get('devices', {}).get(key, {})
                 state = info.get('state', 'Connecting…')
                 if state == 'Connected':
-                    state = ('Connected · Follow OpenRGB · 108 LEDs' if info['mode'] == 'Follow OpenRGB' else f'Connected · {info["mode"]} · {info["brightness"]}%')
+                    state = ('Connected · Sync with OpenRGB · 108 LEDs' if info['mode'] == 'Sync with OpenRGB' and key == 'microphone' else f'Connected · {info["mode"]} · {info["brightness"]}%')
+                if info.get('openrgb_sync'):
+                    sync_info = info['openrgb_sync']
+                    state += (' · waiting for OpenRGB' if sync_info.get('error') else ' · ' + sync_info.get('source', 'waiting for OpenRGB'))
                 labels[key].set_label(state)
             if service_error or current.get('config_error'):
                 hint.set_label(service_error or current['config_error'])
@@ -680,7 +683,7 @@ def gui(default_page='lighting'):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--version', action='version', version='HyperX Open Lighting 0.3.0')
+    parser.add_argument('--version', action='version', version='HyperX Open Lighting 0.3.1')
     parser.add_argument('--doctor', action='store_true', help='Show dependency and device access checks')
     switch = parser.add_mutually_exclusive_group()
     switch.add_argument('--enable', action='store_true', help='Enable selected devices')

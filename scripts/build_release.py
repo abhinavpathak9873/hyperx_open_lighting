@@ -10,8 +10,8 @@ import tarfile
 
 ROOT = Path(__file__).resolve().parents[1]
 DIST = ROOT / 'dist'
-VERSION = '0.3.0'
-DEB_VERSION = '0.3.0'
+VERSION = '0.3.1'
+DEB_VERSION = '0.3.1'
 EPOCH = int(os.environ.get('SOURCE_DATE_EPOCH', '1788998400'))
 
 

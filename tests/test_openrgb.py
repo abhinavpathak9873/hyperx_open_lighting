@@ -36,7 +36,7 @@ class StopAfter:
 
 
 class OpenRGBTest(unittest.TestCase):
-    def run_worker(self,mode='Follow OpenRGB',enabled=True,renamed=False):
+    def run_worker(self,mode='Sync with OpenRGB',enabled=True,renamed=False):
         sdk=FakeSDK(renamed)
         shared={'settings':{'microphone':{**app.DEFAULT['microphone'],'mode':mode,'enabled':enabled}},'devices':{}}
         with patch.object(openrgb,'SDK',return_value=sdk), patch.object(app.os,'open') as hid:
@@ -61,7 +61,7 @@ class OpenRGBTest(unittest.TestCase):
         new=app.validate(old)
         self.assertEqual(new['keyboard'],old['keyboard'])
         self.assertEqual(new['mouse'],old['mouse'])
-        self.assertEqual(new['microphone']['mode'],'Follow OpenRGB')
+        self.assertEqual(new['microphone']['mode'],'Sync with OpenRGB')
         self.assertNotIn('microphone',old)
     def test_parser_rejects_truncation(self):
         raw=fixture()
@@ -75,3 +75,33 @@ class OpenRGBTest(unittest.TestCase):
         self.assertEqual(len(payload),438)
         self.assertEqual(struct.unpack('<IH',payload[:6]),(438,108))
         with self.assertRaises(ValueError):openrgb.color_payload(colors[:1])
+
+    def test_legacy_follow_alias_and_sync_for_all(self):
+        settings={k:{**v,'mode':'Sync with OpenRGB'} for k,v in app.DEFAULT.items()}
+        settings['microphone']['mode']='Follow OpenRGB'
+        result=app.validate(settings)
+        self.assertTrue(all(v['mode']=='Sync with OpenRGB' for v in result.values()))
+
+    def test_readonly_sync_reader_and_failure_retains_color(self):
+        sdk=FakeSDK()
+        shared={'settings':{k:{**v,'mode':'Sync with OpenRGB'} for k,v in app.DEFAULT.items()}}
+        with patch.object(openrgb,'SDK',return_value=sdk):
+            openrgb.sync_worker(shared,threading.Lock(),StopAfter(2))
+        self.assertEqual(shared['openrgb_sync']['color'],[12,34,56])
+        self.assertEqual(sdk.sent,[])
+        with patch.object(openrgb,'SDK',side_effect=ConnectionRefusedError('offline')):
+            openrgb.sync_worker(shared,threading.Lock(),StopAfter(1))
+        self.assertEqual(shared['openrgb_sync']['color'],[12,34,56])
+        self.assertEqual(shared['openrgb_sync']['error'],'offline')
+
+    def test_usb_sync_uses_shared_color_without_sdk_io(self):
+        from unittest.mock import MagicMock
+        device=MagicMock()
+        device.path='fake';device.acks=0;device.info={}
+        shared={'settings':{k:{**v,'mode':'Sync with OpenRGB'} for k,v in app.DEFAULT.items()},
+                'devices':{},'openrgb_sync':{'color':[12,34,56]}}
+        with patch.object(app,'Device',return_value=device), patch.object(app,'find_device',return_value='fake'), patch.object(openrgb,'SDK') as sdk:
+            app.device_worker('keyboard',shared,threading.Lock(),StopAfter(2))
+        sdk.assert_not_called()
+        self.assertEqual(device.frame.call_count,2)
+        self.assertEqual(device.frame.call_args.args[0],[(12,34,56)]*103)
