@@ -6,5 +6,5 @@ Exec=hyperx-open-lighting
 Icon=local.hyperx.RGB
 Terminal=false
 Categories=Settings;HardwareSettings;
-Keywords=HyperX;RGB;keyboard;mouse;lighting;DPI;sensitivity;scroll;
+Keywords=HyperX;RGB;keyboard;mouse;microphone;QuadCast;OpenRGB;lighting;DPI;sensitivity;scroll;
 StartupWMClass=local.hyperx.RGB

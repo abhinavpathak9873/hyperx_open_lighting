@@ -47,4 +47,4 @@ jobs:
         run: |
           extra=()
           if [[ "$TAG" == *alpha* || "$TAG" == *beta* || "$TAG" == *rc* ]]; then extra+=(--prerelease); fi
-          gh release create "$TAG" dist/*.tar.gz dist/*.deb dist/SHA256SUMS --verify-tag --title "HyperX Open Lighting $TAG" --notes 'Native Linux lighting and mouse controls for Alloy Rise 75 and Pulsefire Haste 2 Core Wireless. Includes four hardware DPI stages, polling rate, Hyprland pointer sensitivity, acceleration and scroll settings, a user installer, Debian package and background startup. See the README and protocol notes for installation and validation details.' "${extra[@]}"
+          gh release create "$TAG" dist/*.tar.gz dist/*.deb dist/SHA256SUMS --verify-tag --title "HyperX Open Lighting $TAG" --notes 'Adds QuadCast 2 S microphone lighting through OpenRGB, with Follow OpenRGB for profiles and wallpaper sync, plus manual color, brightness and effects. Preserves Alloy Rise 75 and Haste 2 Core Wireless support and saved DPI settings. Includes a user installer, Debian package and background startup. See README and CHANGELOG for setup and validation details.' "${extra[@]}"

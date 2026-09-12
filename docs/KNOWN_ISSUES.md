@@ -40,3 +40,12 @@ are read but not rewritten. Keyboard timing is unchanged.
 For a fixed sensitivity, use one DPI across all stages and flat desktop
 acceleration. A physically sleeping/disconnected mouse cannot accept live RGB;
 its onboard effect may appear until it responds again.
+
+## QuadCast 2 S discovery
+
+Microphone control requires a running local OpenRGB SDK server with its native
+QuadCast 2 S driver. A mic plugged in after detection may need an OpenRGB rescan
+or restart. The app retries server/device discovery automatically. Follow OpenRGB
+does not change OpenRGB colors or effects; manual animated modes take precedence
+until Follow OpenRGB is selected again. SDK readback confirms accepted colors,
+not independently measured physical light output.

@@ -75,3 +75,21 @@ HID reader. Mouse sleep/timeouts do not block the keyboard worker. Physical DPI
 button changes are tracked from `fb 08 SS` stage notifications in v0.2.1; other
 input notifications are discarded. Routine background DPI queries are avoided
 to keep RGB frames uninterrupted.
+
+## QuadCast 2 S (v0.3.0)
+
+Connected RGB controller: `03f0:02b5`, firmware `6113`, 108 LEDs, layout 0.
+The RGB report IDs are on interface 01 (not interface 02 used by the other models).
+The separate `03f0:0d84` USB audio device is not accessed by this app.
+
+Production control uses OpenRGB's local SDK protocol 2, not direct HID. It
+negotiates with command 40, enumerates with 0/1, selects direct mode with 1100
+and sends 108 RGBX colors with 1050. Name and LED count are checked before writes;
+manual writes are read back through the SDK. This verifies OpenRGB's accepted
+state, not independent optical measurement. OpenRGB owns the USB keepalive.
+Follow OpenRGB sends no color or mode commands, preserving profile control.
+
+References:
+- [OpenRGB QuadCast 2 S driver](https://gitlab.com/CalcProgrammer1/OpenRGB/-/merge_requests/3039)
+- [OpenRGB SDK protocol](https://github.com/CalcProgrammer1/OpenRGB/blob/master/Documentation/OpenRGBSDK.md)
+- [Independent QuadCast 2 S interface observations](https://github.com/matiasromero/hyperx-quadcast-colors-utility)

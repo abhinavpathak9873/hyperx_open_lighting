@@ -5,7 +5,7 @@
 <p align="center"><a href="https://github.com/abhinavpathak9873/hyperx_open_lighting/releases">Download</a> · <a href="docs/PROTOCOL.md">Protocol notes</a> · <a href="CONTRIBUTING.md">Contribute</a></p>
 
 Control selected HyperX devices directly from Linux with a native GTK interface.
-Lighting has been tested on the two models below; support for other HyperX
+Lighting has been tested on the models below; support for other HyperX
 models is not implied. Ctrl/Shift operation was confirmed working after a
 keyboard reconnect during setup.
 
@@ -23,6 +23,7 @@ keyboard reconnect during setup.
 
 | Device | USB ID | Current status |
 | --- | --- | --- |
+| HyperX QuadCast 2 S | `03f0:02b5` (RGB controller) | 108 LEDs through OpenRGB; manual color/brightness SDK readback tested |
 | HyperX Alloy Rise 75, wired | `03f0:02a1` | RGB, brightness and physical modifier operation tested |
 | HyperX Pulsefire Haste 2 Core Wireless, USB receiver | `03f0:0ab5` | RGB, brightness and DPI readback tested; polling controls included |
 
@@ -30,6 +31,42 @@ Other models and Bluetooth connections are not supported. The mouse has one RGB
 zone, so its rainbow wave appears as a color cycle. Software effects need the
 background service and may increase wireless battery consumption. Settings are
 saved on the computer; the app does not write onboard flash profiles.
+
+## QuadCast 2 S and OpenRGB
+
+The microphone uses OpenRGB's native **HyperX QuadCast 2 S** driver. OpenRGB is
+its only USB owner and maintains the hardware lighting session; this app never
+opens a second microphone HID connection. Microphone audio, gain and mute
+controls are not modified.
+
+1. Install an OpenRGB build whose supported devices include **HyperX QuadCast 2 S**,
+   with its USB permissions installed. Older builds without this driver will not work.
+2. Enable the OpenRGB SDK server on **127.0.0.1:6742**. For example,
+   `openrgb --server --server-host 127.0.0.1 --startminimized`.
+3. Check that the microphone appears with **108 LEDs** in OpenRGB. If you plugged
+   it in after OpenRGB started, rescan or restart OpenRGB.
+4. Open HyperX Open Lighting. The microphone defaults to **Follow OpenRGB**.
+   Its colors, effects and saved profiles then come directly from OpenRGB.
+   Include it in your usual OpenRGB startup profile and wallpaper sync.
+
+Choose a manual effect on the microphone card and **Apply & save** to control it
+from this app. Brightness scales the RGB output. Animated effects stream through
+the SDK; static/off are applied once per saved change or SDK reconnect. In manual
+animated mode this app controls the colors; choose **Follow OpenRGB** before
+using OpenRGB effects/profiles. Follow mode stops app writes; it does not reload
+an earlier OpenRGB profile automatically. Disabling microphone control also
+leaves OpenRGB in charge and does not turn off the microphone or its lights.
+
+```sh
+hyperx-open-lighting --device microphone --mode Static --color 78824b
+hyperx-open-lighting --device microphone --mode 'Follow OpenRGB'
+```
+
+`--device both` retains its keyboard-and-mouse meaning; `--device all` includes
+the microphone. Disconnected devices wait independently without blocking the
+microphone. Existing keyboard, mouse and DPI preferences survive upgrades.
+OpenRGB must also start at login for microphone control; if its SDK server
+restarts, this app reconnects automatically.
 
 ## Install
 
@@ -42,7 +79,7 @@ also run in Ubuntu 24.04. Other distributions are best effort.
 Download the `.deb` from [Releases](https://github.com/abhinavpathak9873/hyperx_open_lighting/releases), then:
 
 ```sh
-sudo apt install ./hyperx-open-lighting_0.2.2_all.deb
+sudo apt install ./hyperx-open-lighting_0.3.0_all.deb
 ```
 
 Open **HyperX Open Lighting** from your application launcher. Opening it enables
@@ -180,7 +217,7 @@ systemctl --user disable --now hyperx-rgb.service  # stop + disable startup
 Settings live at `$XDG_CONFIG_HOME/hyperx-rgb/settings.json`, normally
 `~/.config/hyperx-rgb/settings.json`. Existing colors are retained during upgrades;
 old settings without enable flags keep lighting enabled.
-There is no telemetry, network access in the controller, or key-event logging.
+There is no telemetry or key-event logging. Microphone control connects only to the local OpenRGB SDK at `127.0.0.1:6742`.
 
 ## Update / uninstall
 

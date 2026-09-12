@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Linux RGB control for 03f0:02a1 and 03f0:0ab5.
+"""Linux lighting control for selected HyperX keyboards, mice and microphones.
 
 The protocol core uses the standard library; the GUI uses system GTK4/Adwaita.
 
@@ -22,9 +22,9 @@ import tempfile
 import threading
 import time
 try:
-    from . import mouse, mouse_ui
+    from . import mouse, mouse_ui, openrgb
 except ImportError:
-    import mouse, mouse_ui
+    import mouse, mouse_ui, openrgb
 
 ROOT = Path(__file__).resolve().parent
 CONFIG_DIR = Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config'))) / 'hyperx-rgb'
@@ -35,10 +35,17 @@ MODES = ('Static', 'Breathing', 'Color cycle', 'Rainbow wave', 'Off')
 DEVICES = {
     'keyboard': {'pid': 0x02A1, 'name': 'Alloy Rise 75', 'leds': 103},
     'mouse': {'pid': 0x0AB5, 'name': 'Pulsefire Haste 2 Core Wireless', 'leds': 1},
+    'microphone': {'pid': 0x02B5, 'name': 'QuadCast 2 S', 'leds': 108},
 }
 LAYOUT = json.loads((ROOT / 'keyboard-layout.json').read_text())
 DEFAULT = {key: {'color': '#ff0000', 'brightness': 100, 'mode': 'Static', 'speed': 40, 'enabled': True}
            for key in DEVICES}
+
+DEFAULT['microphone']['mode'] = 'Follow OpenRGB'
+
+
+def modes_for(key):
+    return MODES + ('Follow OpenRGB',) if key == 'microphone' else MODES
 
 
 def atomic_json(path, obj):
@@ -55,8 +62,10 @@ def atomic_json(path, obj):
 
 
 def validate(data):
-    if not isinstance(data, dict) or set(data) != set(DEVICES):
-        raise ValueError('Settings must contain keyboard and mouse')
+    if not isinstance(data, dict) or set(data) not in (set(DEVICES), {'keyboard', 'mouse'}):
+        raise ValueError('Settings must contain keyboard, mouse and optionally microphone')
+    # Migrate existing installations without altering either device or DPI settings.
+    data = {**data, 'microphone': data.get('microphone', dict(DEFAULT['microphone']))}
     result = {}
     for key in DEVICES:
         entry = data[key]
@@ -65,7 +74,7 @@ def validate(data):
         color = entry.get('color', '')
         if not isinstance(color, str) or not re.fullmatch(r'#[0-9a-fA-F]{6}', color):
             raise ValueError('Color must be a six-digit hex color such as #ff0000')
-        if entry.get('mode') not in MODES:
+        if entry.get('mode') not in modes_for(key):
             raise ValueError('Unknown lighting mode')
         for field in ('brightness', 'speed'):
             if type(entry.get(field)) is not int or not 0 <= entry[field] <= 100:
@@ -85,6 +94,8 @@ def load_settings():
 
 
 def find_device(key):
+    if key == 'microphone':
+        return None  # OpenRGB owns this USB device; never open a competing HID reader.
     target = DEVICES[key]
     for path in sorted(Path('/sys/class/hidraw').glob('hidraw*')):
         try:
@@ -209,7 +220,7 @@ def render(key, settings, now):
     if mode == 'Breathing':
         factor = .08 + .92 * (.5 - .5 * math.cos(phase * 2 * math.pi))
         return [tuple(round(c * factor) for c in base)] * count
-    offsets = [0.] * count
+    offsets = [i / count if mode == 'Rainbow wave' and key == 'microphone' else 0. for i in range(count)]
     if mode == 'Rainbow wave' and key == 'keyboard':
         for item in LAYOUT:
             offsets[item['led'] - 1] = item['col'] / 17
@@ -229,6 +240,8 @@ def take_lock():
 
 def device_worker(key, shared, guard, stopping):
     """Keep this device's direct-lighting session alive independently of others."""
+    if key == 'microphone':
+        return openrgb.worker(shared, guard, stopping, render)
     device = None
     applied = None
     frames = 0
@@ -463,7 +476,7 @@ def gui(default_page='lighting'):
                                     application_name='HyperX Open Lighting',
                                     application_icon='local.hyperx.RGB',
                                     developer_name='HyperX Open Lighting contributors',
-                                    version='0.2.2',
+                                    version='0.3.0',
                                     website='https://github.com/abhinavpathak9873/hyperx_open_lighting',
                                     issue_url='https://github.com/abhinavpathak9873/hyperx_open_lighting/issues',
                                     license_type=Gtk.License.MIT_X11)
@@ -484,7 +497,9 @@ def gui(default_page='lighting'):
         stack.add_titled(lighting_scroll, 'lighting', 'Lighting')
         stack.add_titled(mouse_ui.page(Gtk, Adw, GLib, read_status, atomic_json), 'mouse', 'Mouse')
         stack.set_visible_child_name(default_page)
-        cards = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=16, homogeneous=True)
+        cards = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, column_spacing=16, row_spacing=16, homogeneous=True)
+        cards.set_max_children_per_line(3)
+        cards.set_min_children_per_line(1)
         content.append(cards)
         try:
             settings = load_settings()
@@ -502,7 +517,7 @@ def gui(default_page='lighting'):
         for key, spec in DEVICES.items():
             frame = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
             frame.add_css_class('card')
-            cards.append(frame)
+            cards.insert(frame, -1)
             card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
             for method in ('set_margin_start', 'set_margin_end', 'set_margin_top', 'set_margin_bottom'):
                 getattr(card, method)(20)
@@ -549,8 +564,8 @@ def gui(default_page='lighting'):
                 target.set_text('#' + ''.join(f'{round(v * 255):02x}' for v in (rgba.red, rgba.green, rgba.blue)))
             color.connect('notify::rgba', color_changed)
             card.append(label('Effect', 'dim-label'))
-            mode = Gtk.DropDown.new_from_strings(MODES)
-            mode.set_selected(MODES.index(settings[key]['mode']))
+            mode = Gtk.DropDown.new_from_strings(modes_for(key))
+            mode.set_selected(modes_for(key).index(settings[key]['mode']))
             card.append(mode)
             values = {'color': entry, 'swatch': color, 'mode': mode, 'enabled': enabled}
             for field, text in [('brightness', 'Brightness'), ('speed', 'Effect speed')]:
@@ -562,6 +577,17 @@ def gui(default_page='lighting'):
                 slider.set_value_pos(Gtk.PositionType.RIGHT)
                 card.append(slider)
                 values[field] = slider
+            if key == 'microphone':
+                note = label('Follow OpenRGB uses its colors, effects and profiles. Manual effects override it until you select Follow OpenRGB again.', 'dim-label')
+                note.set_wrap(True)
+                note.set_max_width_chars(32)
+                card.append(note)
+                def follow_changed(dropdown, _param, widgets=values):
+                    follow = modes_for('microphone')[dropdown.get_selected()] == 'Follow OpenRGB'
+                    for field in ('color', 'swatch', 'brightness', 'speed'):
+                        widgets[field].set_sensitive(not follow)
+                mode.connect('notify::selected', follow_changed)
+                follow_changed(mode, None)
             controls[key] = values
         footer = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=16)
         hint = label('Keeps running when this window closes.', 'dim-label')
@@ -572,9 +598,14 @@ def gui(default_page='lighting'):
         button.add_css_class('suggested-action')
         button.add_css_class('pill')
         footer.append(button)
-        content.append(footer)
-        pause = Gtk.Button(label='Pause all lighting now')
-        content.append(pause)
+        footer.set_margin_start(24)
+        footer.set_margin_end(24)
+        outer.append(footer)
+        pause = Gtk.Button(label='Pause app control')
+        pause.set_margin_start(24)
+        pause.set_margin_end(24)
+        pause.set_margin_bottom(16)
+        outer.append(pause)
 
         def pause_all(_button):
             try:
@@ -583,7 +614,7 @@ def gui(default_page='lighting'):
                     current[key]['enabled'] = False
                     controls[key]['enabled'].set_active(False)
                 atomic_json(CONFIG, current)
-                hint.set_label('Lighting paused. Onboard effects return after the host timeout.')
+                hint.set_label('App control paused. OpenRGB continues managing the microphone.')
             except (OSError, ValueError) as exc:
                 hint.set_label(str(exc))
         pause.connect('clicked', pause_all)
@@ -591,7 +622,7 @@ def gui(default_page='lighting'):
         def apply(_button):
             try:
                 data = {key: {'color': c['color'].get_text(),
-                              'mode': MODES[c['mode'].get_selected()],
+                              'mode': modes_for(key)[c['mode'].get_selected()],
                               'brightness': round(c['brightness'].get_value()),
                               'speed': round(c['speed'].get_value()),
                               'enabled': c['enabled'].get_active()}
@@ -615,7 +646,7 @@ def gui(default_page='lighting'):
                 info = current.get('devices', {}).get(key, {})
                 state = info.get('state', 'Connecting…')
                 if state == 'Connected':
-                    state = f'Connected · {info["mode"]} · {info["brightness"]}%'
+                    state = ('Connected · Follow OpenRGB · 108 LEDs' if info['mode'] == 'Follow OpenRGB' else f'Connected · {info["mode"]} · {info["brightness"]}%')
                 labels[key].set_label(state)
             if service_error or current.get('config_error'):
                 hint.set_label(service_error or current['config_error'])
@@ -630,7 +661,7 @@ def gui(default_page='lighting'):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--version', action='version', version='HyperX Open Lighting 0.2.2')
+    parser.add_argument('--version', action='version', version='HyperX Open Lighting 0.3.0')
     parser.add_argument('--doctor', action='store_true', help='Show dependency and device access checks')
     switch = parser.add_mutually_exclusive_group()
     switch.add_argument('--enable', action='store_true', help='Enable selected devices')
@@ -638,16 +669,28 @@ def main():
     parser.add_argument('--daemon', action='store_true')
     parser.add_argument('--status', action='store_true')
     parser.add_argument('--mouse-settings', action='store_true', help='Open the Mouse tab')
-    parser.add_argument('--device', choices=('keyboard', 'mouse', 'both'), default='both')
+    parser.add_argument('--device', choices=('keyboard', 'mouse', 'microphone', 'both', 'all'), default='both')
     parser.add_argument('--color', help='Hex RGB color, e.g. ff0000')
     parser.add_argument('--brightness', type=int)
-    parser.add_argument('--mode', choices=MODES)
+    parser.add_argument('--mode', choices=MODES + ('Follow OpenRGB',))
     parser.add_argument('--dpi', type=int, help='Set active mouse stage DPI (50–12000, steps of 50)')
     parser.add_argument('--polling-rate', type=int, choices=tuple(mouse.RATES), help='Mouse polling rate in Hz')
     args = parser.parse_args()
     if args.doctor:
         result = {}
         for key in DEVICES:
+            if key == 'microphone':
+                sdk = None
+                try:
+                    sdk = openrgb.SDK()
+                    found = any(name == openrgb.NAME and len(colors) == 432 for _, name, colors in sdk.devices())
+                    result[key] = {'connected': found, 'backend': 'OpenRGB SDK at 127.0.0.1:6742'}
+                except (OSError, RuntimeError, ValueError) as exc:
+                    result[key] = {'connected': False, 'error': str(exc)}
+                finally:
+                    if sdk:
+                        sdk.close()
+                continue
             path = find_device(key)
             result[key] = {'connected': path is not None, 'control_interface': path,
                            'accessible': bool(path and os.access(path, os.R_OK | os.W_OK))}
@@ -682,11 +725,13 @@ def main():
         print('Saved mouse settings. Check --status for hardware readback.')
     elif args.color is not None or args.brightness is not None or args.mode is not None or args.enable or args.disable:
         settings = load_settings()
-        for key in DEVICES if args.device == 'both' else (args.device,):
+        for key in (tuple(DEVICES) if args.device == 'all' else ('keyboard', 'mouse') if args.device == 'both' else (args.device,)):
             if args.enable or args.disable:
                 settings[key]['enabled'] = args.enable
             if args.color is not None:
                 settings[key]['color'] = '#' + args.color.lstrip('#')
+                if key == 'microphone' and args.mode is None:
+                    settings[key]['mode'] = 'Static'
             if args.brightness is not None:
                 settings[key]['brightness'] = args.brightness
             if args.mode is not None:

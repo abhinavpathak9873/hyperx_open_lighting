@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0
+
+- Add QuadCast 2 S microphone lighting through the local OpenRGB SDK, using its native 108-LED driver as the sole USB owner.
+- Default to Follow OpenRGB for profiles, effects and existing wallpaper sync; offer manual colors, brightness and software effects.
+- Migrate existing settings, preserve keyboard/mouse defaults and `--device both`, and add `microphone` / `all` CLI targets.
+- Wrap device cards to fit smaller windows and reconnect to OpenRGB independently of absent USB devices.
+- Verify manual SDK color readback, profile restore and restart recovery on the connected microphone; add six isolated regression tests.
+
 ## 0.2.2
 
 - Persistent single-DPI mode keeps later edits synchronized across every stage.

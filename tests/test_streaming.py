@@ -37,7 +37,7 @@ class StreamingTest(unittest.TestCase):
                 guard, stop = threading.Lock(), threading.Event()
                 with patch.object(h, 'Device', SlowMouse), patch.object(h, 'find_device', lambda k: k):
                     threads = [threading.Thread(target=h.device_worker, args=(k, shared, guard, stop))
-                               for k in h.DEVICES]
+                               for k in ('keyboard', 'mouse')]
                     for t in threads:
                         t.start()
                     try:
