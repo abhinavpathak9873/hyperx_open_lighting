@@ -49,6 +49,9 @@ controls are not modified.
    Its colors, effects and saved profiles then come directly from OpenRGB.
    Include it in your usual OpenRGB startup profile and wallpaper sync.
 
+The **Sync with OpenRGB** button on the microphone card enables Follow OpenRGB
+and saves immediately, without an extra Apply step.
+
 Choose a manual effect on the microphone card and **Apply & save** to control it
 from this app. Brightness scales the RGB output. Animated effects stream through
 the SDK; static/off are applied once per saved change or SDK reconnect. In manual

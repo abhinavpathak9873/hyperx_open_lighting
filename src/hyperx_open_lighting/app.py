@@ -568,6 +568,25 @@ def gui(default_page='lighting'):
             mode.set_selected(modes_for(key).index(settings[key]['mode']))
             card.append(mode)
             values = {'color': entry, 'swatch': color, 'mode': mode, 'enabled': enabled}
+            if key == 'microphone':
+                sync = Gtk.Button(label='Sync with OpenRGB')
+                sync.add_css_class('suggested-action')
+                sync.set_tooltip_text('Follow OpenRGB colors, effects and profiles. Saves immediately.')
+
+                def sync_openrgb(_button, widgets=values):
+                    try:
+                        current = load_settings()
+                        current['microphone']['mode'] = 'Follow OpenRGB'
+                        current['microphone']['enabled'] = True
+                        atomic_json(CONFIG, validate(current))
+                        widgets['enabled'].set_active(True)
+                        widgets['mode'].set_selected(modes_for('microphone').index('Follow OpenRGB'))
+                        hint.set_label('Saved. Microphone now follows OpenRGB; no extra Apply needed.')
+                    except (OSError, ValueError) as exc:
+                        hint.set_label(str(exc))
+
+                sync.connect('clicked', sync_openrgb)
+                card.append(sync)
             for field, text in [('brightness', 'Brightness'), ('speed', 'Effect speed')]:
                 card.append(label(text, 'dim-label'))
                 slider = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 100, 1)
