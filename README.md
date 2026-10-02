@@ -11,6 +11,22 @@ keyboard reconnect during setup.
 
 ![App window](docs/screenshot.png)
 
+## Lights off
+
+Use **Lights off** in the bottom action bar to turn off HyperX devices and all
+connected OpenRGB lighting. The operation runs in the background and reports
+failures in the app. It enables off output even for paused HyperX devices,
+preserving their saved colors and mouse settings. **Pause app control** remains
+a separate action; pausing does not turn lights off.
+
+On the configured room-light installation (`~/.local/bin/pathak-room-lights`),
+this refreshes OpenRGB device connections, waits for startup theme sync, then
+turns off the PC, AULA keyboard, microphone and room strips and saves the profile.
+Other installations use the local SDK to black out all detected controllers;
+OpenRGB startup/profile persistence is not changed by that fallback.
+
+The same action is available as `hyperx-open-lighting --lights-off`.
+
 ## What it does
 
 - Pick a color and brightness independently for each device.
@@ -95,7 +111,7 @@ also run in Ubuntu 24.04. Other distributions are best effort.
 Download the `.deb` from [Releases](https://github.com/abhinavpathak9873/hyperx_open_lighting/releases), then:
 
 ```sh
-sudo apt install ./hyperx-open-lighting_0.3.1_all.deb
+sudo apt install ./hyperx-open-lighting_0.3.2_all.deb
 ```
 
 Open **HyperX Open Lighting** from your application launcher. Opening it enables

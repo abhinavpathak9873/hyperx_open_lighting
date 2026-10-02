@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.2
+
+- Add Lights off to the fixed bottom action bar and a matching --lights-off command.
+- Use the configured all-room-lights workflow, including fresh OpenRGB USB connections and waiting for startup theme sync; save off after sync completes.
+- Fall back to all detected OpenRGB controllers on other installations.
+- Keep the UI responsive, report failures, and update effect menus to the saved off state.
+
 ## 0.3.1
 
 - Make Sync with OpenRGB an effect on all device cards; remove the separate button.

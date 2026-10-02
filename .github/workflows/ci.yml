@@ -47,4 +47,4 @@ jobs:
         run: |
           extra=()
           if [[ "$TAG" == *alpha* || "$TAG" == *beta* || "$TAG" == *rc* ]]; then extra+=(--prerelease); fi
-          gh release create "$TAG" dist/*.tar.gz dist/*.deb dist/SHA256SUMS --verify-tag --title "HyperX Open Lighting $TAG" --notes 'Adds QuadCast 2 S microphone lighting through OpenRGB, with Follow OpenRGB for profiles and wallpaper sync, plus manual color, brightness and effects. Preserves Alloy Rise 75 and Haste 2 Core Wireless support and saved DPI settings. Includes a user installer, Debian package and background startup. See README and CHANGELOG for setup and validation details.' "${extra[@]}"
+          gh release create "$TAG" dist/*.tar.gz dist/*.deb dist/SHA256SUMS --verify-tag --title "HyperX Open Lighting $TAG" --notes 'Adds a Lights off button and CLI action for HyperX devices, PC, AULA keyboard and room lights. Refreshes local OpenRGB connections and waits for startup theme sync before saving off. Includes a portable SDK fallback, responsive UI and error reporting. See CHANGELOG and README for details.' "${extra[@]}"

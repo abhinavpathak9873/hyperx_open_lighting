@@ -22,9 +22,9 @@ import tempfile
 import threading
 import time
 try:
-    from . import mouse, mouse_ui, openrgb
+    from . import mouse, mouse_ui, openrgb, lights
 except ImportError:
-    import mouse, mouse_ui, openrgb
+    import mouse, mouse_ui, openrgb, lights
 
 ROOT = Path(__file__).resolve().parent
 CONFIG_DIR = Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config'))) / 'hyperx-rgb'
@@ -463,6 +463,15 @@ def ensure_service():
                    check=True, capture_output=True, text=True, timeout=15)
 
 
+def save_lights_off():
+    current = load_settings()
+    for entry in current.values():
+        entry['mode'] = 'Off'
+        entry['enabled'] = True
+    atomic_json(CONFIG, current)
+    ensure_service()
+
+
 def gui(default_page='lighting'):
     import gi
     gi.require_version('Gtk', '4.0')
@@ -495,7 +504,7 @@ def gui(default_page='lighting'):
                                     application_name='HyperX Open Lighting',
                                     application_icon='local.hyperx.RGB',
                                     developer_name='HyperX Open Lighting contributors',
-                                    version='0.3.1',
+                                    version='0.3.2',
                                     website='https://github.com/abhinavpathak9873/hyperx_open_lighting',
                                     issue_url='https://github.com/abhinavpathak9873/hyperx_open_lighting/issues',
                                     license_type=Gtk.License.MIT_X11)
@@ -616,6 +625,9 @@ def gui(default_page='lighting'):
         button = Gtk.Button(label='Apply & save')
         button.add_css_class('suggested-action')
         button.add_css_class('pill')
+        off_button = Gtk.Button(label='Lights off')
+        off_button.set_tooltip_text('Turn off HyperX, PC, keyboard and room lighting')
+        footer.append(off_button)
         footer.append(button)
         footer.set_margin_start(24)
         footer.set_margin_end(24)
@@ -625,6 +637,41 @@ def gui(default_page='lighting'):
         pause.set_margin_end(24)
         pause.set_margin_bottom(16)
         outer.append(pause)
+
+        def lights_off_clicked(_button):
+            off_button.set_sensitive(False)
+            button.set_sensitive(False)
+            pause.set_sensitive(False)
+            cards.set_sensitive(False)
+            hint.set_label('Turning all lights off…')
+
+            def finish(message):
+                # Keep the visible controls aligned with the saved off state.
+                try:
+                    current = load_settings()
+                    for key, widgets in controls.items():
+                        widgets['mode'].set_selected(MODES.index(current[key]['mode']))
+                        widgets['enabled'].set_active(current[key]['enabled'])
+                except (OSError, ValueError):
+                    pass
+                hint.set_label(message)
+                off_button.set_sensitive(True)
+                button.set_sensitive(True)
+                pause.set_sensitive(True)
+                cards.set_sensitive(True)
+                return GLib.SOURCE_REMOVE
+
+            def work():
+                try:
+                    message = lights.turn_off(save_lights_off)
+                except Exception as exc:
+                    message = f'Could not turn all lights off: {exc}'
+                GLib.idle_add(finish, message)
+
+            # Keep the operation alive if the window is closed while it runs.
+            threading.Thread(target=work, name='all-lights-off', daemon=False).start()
+
+        off_button.connect('clicked', lights_off_clicked)
 
         def pause_all(_button):
             try:
@@ -683,13 +730,14 @@ def gui(default_page='lighting'):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--version', action='version', version='HyperX Open Lighting 0.3.1')
+    parser.add_argument('--version', action='version', version='HyperX Open Lighting 0.3.2')
     parser.add_argument('--doctor', action='store_true', help='Show dependency and device access checks')
     switch = parser.add_mutually_exclusive_group()
     switch.add_argument('--enable', action='store_true', help='Enable selected devices')
     switch.add_argument('--disable', action='store_true', help='Pause selected devices immediately')
     parser.add_argument('--daemon', action='store_true')
     parser.add_argument('--status', action='store_true')
+    parser.add_argument('--lights-off', action='store_true', help='Turn off HyperX and all OpenRGB/room lights')
     parser.add_argument('--mouse-settings', action='store_true', help='Open the Mouse tab')
     parser.add_argument('--device', choices=('keyboard', 'mouse', 'microphone', 'both', 'all'), default='both')
     parser.add_argument('--color', help='Hex RGB color, e.g. ff0000')
@@ -726,6 +774,8 @@ def main():
             result['gui_dependencies'] = False
         result['service'] = read_status()
         print(json.dumps(result, indent=2))
+    elif args.lights_off:
+        print(lights.turn_off(save_lights_off))
     elif args.daemon:
         daemon()
     elif args.status:
